@@ -31,11 +31,100 @@ pub mod demo {
     // A ::= a | c
     // B ::= a | b
 
-    #[test]
-    fn demo_1() {
+    #[cfg(test)]
+    fn demo(input: &'static str) -> Result<Success> {
         let g = Graph::new();
-        Context::new("ad".as_bytes(), &g).main().unwrap();
+        Context::new(input.as_bytes(), &g).main()
     }
+
+    #[test]
+    fn demo_1a() {
+        demo("ad").unwrap();
+    }
+    #[test]
+    fn demo_1b() {
+        demo("aadd").unwrap();
+    }
+    #[test]
+    fn demo_1c() {
+        demo("acdd").unwrap();
+    }
+    #[test]
+    fn demo_1d() {
+        demo("cadd").unwrap();
+    }
+
+    #[test]
+    fn demo_2a() {
+        demo("b").unwrap();
+    }
+    #[test]
+    fn demo_2b() {
+        demo("bb").unwrap();
+    }
+    #[test]
+    fn demo_2c() {
+        demo("bbb").unwrap();
+    }
+
+    #[test]
+    fn demo_3a() {
+        demo("bad").unwrap();
+    }
+    #[test]
+    fn demo_3b() {
+        demo("bcd").unwrap();
+    }
+    #[test]
+    fn demo_3c() {
+        demo("bbad").unwrap();
+    }
+    #[test]
+    fn demo_3d() {
+        demo("bbcd").unwrap();
+    }
+    #[test]
+    fn demo_3e() {
+        demo("abd").unwrap();
+    }
+    #[test]
+    fn demo_3f() {
+        demo("cbd").unwrap();
+    }
+    #[test]
+    fn demo_3g() {
+        demo("bacdd").unwrap();
+    }
+    #[test]
+    fn demo_3h() {
+        demo("bcadd").unwrap();
+    }
+    #[test]
+    fn demo_3i() {
+        demo("bbcadd").unwrap();
+    }
+    #[test]
+    fn demo_3j() {
+        demo("bbacdd").unwrap();
+    }
+    #[test]
+    fn demo_3k() {
+        demo("bbaacddd").unwrap();
+    }
+    #[test]
+    fn demo_3l() {
+        demo("bbaccddd").unwrap();
+    }
+    #[test]
+    fn demo_3m() {
+        demo("bbcacddd").unwrap();
+    }
+
+    #[test]
+    fn demo_4a() {
+        demo("a").unwrap();
+    }
+
 
     use graph::gss::{Graph, Node};
     use super::*;
