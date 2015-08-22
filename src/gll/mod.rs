@@ -126,7 +126,7 @@ pub mod demo {
     }
 
 
-    use graph::gss::{Graph, Node};
+    use graph::{Graph, Node};
     use super::*;
     use super::{T, ts, EndToken};
 
@@ -153,7 +153,7 @@ pub mod demo {
     }
     #[derive(Copy, Clone, PartialEq, Debug)]
     struct Desc<'g>(Label, Stack<'g>, InputPos);
-    type GData = (Label, InputPos);
+    type GData = Option<(Label, InputPos)>;
     #[derive(Copy, Clone)]
     struct Stack<'g>(&'g Node<'g, GData>);
     impl<'g> PartialEq for Stack<'g> {
@@ -163,32 +163,34 @@ pub mod demo {
     }
     impl<'g> Stack<'g> {
         fn empty(&self) -> bool {
-            self.0.child().is_none()
+            self.0.children().count() == 0
         }
     }
     impl<'g> ::std::fmt::Debug for Stack<'g> {
         fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-            write!(w, "[");
-            let mut n = self.0;
-            let mut seen_one = false;
-            loop {
-                match *n {
-                    Node::Dummy => break,
-                    Node::Data(ref dn) => {
-                        if seen_one { write!(w, ", "); }
-                        seen_one = true;
-                        write!(w, "{:?}", dn.data);
-                        n = dn.child();
-                    }
-                }
-            }
-            write!(w, "]")
+            write!(w, "Stack {{");
+            write!(w, "label: [ {:?}", self.0.data);
+            write!(w, "children: [..] }}")
         }
     }
     #[derive(Copy, Clone)]
     struct G<'g> {
         graph: &'g Graph<'g, GData>,
         dummy: &'g Node<'g, GData>,
+    }
+    struct Set<T:PartialEq> { elems: Vec<T> }
+    impl<T:PartialEq> Set<T> {
+        fn new() -> Set<T> {
+            Set { elems: Vec::new() }
+        }
+        fn add(&mut self, t: T) {
+            if !self.elems.contains(&t) {
+                self.elems.push(t);
+            }
+        }
+        fn elems(&self) -> &[T] {
+            &self.elems[..]
+        }
     }
     struct R<'g> {
         todo: Vec<Desc<'g>>,
@@ -241,6 +243,7 @@ pub mod demo {
         r: R<'g>,
         g: G<'g>,
         s: Stack<'g>,
+        popped: Set<(Stack<'g>, InputPos)>,
     }
 
     impl<'i, 'g> ::std::fmt::Debug for Context<'i, 'g> {
@@ -258,15 +261,20 @@ pub mod demo {
     impl<'i, 'g> Context<'i, 'g> {
         pub fn new(t: &'i [u8], g: &'g Graph<'g, GData>) -> Context<'i, 'g> {
             use self::Label as L;
-            let d = g.add_dummy();
-            let s = g.add_node((L::_0, InputPos(0)), d);
+            let d = g.add_node(None);
+            let s = g.add_node(Some((L::_0, InputPos(0))));
+            s.add_child(d);
             Context { i: InputPos(0),
                       I: ts(t),
                       r: R::new(),
                       g: G { graph: g, dummy: d },
                       s: Stack(s),
+                      popped: Set::new(),
             }
         }
+    }
+
+    impl<'i, 'g> Context<'i, 'g> {
         fn i_in_core(&self, terms: &[char], end: EndToken) -> bool {
             match (self.I.get(self.i.0), end) {
                 (None, EndToken::Incl) => true,
@@ -276,33 +284,53 @@ pub mod demo {
         }
         fn i_in_end(&self, terms: &[char]) -> bool { self.i_in_core(terms, EndToken::Incl) }
         fn i_in(&self, terms: &[char]) -> bool { self.i_in_core(terms, EndToken::Excl) }
+    }
 
-        fn push(&mut self, l: Label) {
-            println!("  push self: {:?} l: {:?}", self, l);
-            let p = self.g.graph.add_node((l, self.i), self.s.0);
-            self.s = Stack(p);
+    impl<'i, 'g> Context<'i, 'g> {
+        fn create(&mut self, l: Label) {
+            println!("  create self: {:?} l: {:?}", self, l);
+            let L_j = (l, self.i);
+            let u = self.s;
+            let v = self.g.graph.nodes()
+                .find(|n| n.data == Some(L_j) )
+                .map(|p|*p);
+            let v = match v {
+                Some(v) => v,
+                None => self.g.graph.add_node(Some(L_j))
+            };
+            if v.children().find(|c| Stack(c) == u).is_none() {
+                v.add_child(u.0);
+            }
+            self.s = Stack(v);
         }
 
         fn pop(&mut self) {
             println!("  pop self: {:?}", self);
             // pop L off stack s = s'::L, add (L, s', i) to R, where
             // i is current input position.
-            match *self.s.0 {
-                Node::Dummy => {},
-                Node::Data(ref dn) => {
-                    let d = &dn.data;
-                    let s_prime = Stack(dn.child());
-                    self.s = s_prime;
-                    self.add(d.0);
+            let u = self.s;
+            let j = self.i;
+            if u != Stack(self.g.dummy) {
+                self.popped.add((u, j));
+                let L_u = u.0.data.unwrap().0;
+                for v in u.0.children() {
+                    self.add(L_u, Stack(v), j);
                 }
             }
         }
 
-        fn add(&mut self, l: Label) {
-            let j = self.i;
-            self.r.add(Desc(l, self.s, j));
+        fn add(&mut self, l: Label, u: Stack<'g>, j: InputPos) {
+            self.r.add(Desc(l, u, j));
         }
 
+        fn add_s(&mut self, l: Label) {
+            let u = self.s;
+            let j = self.i;
+            self.add(l, u, j);
+        }
+    }
+
+    impl<'i, 'g> Context<'i, 'g> {
         fn main(&mut self) -> Result<Success> {
             use self::Label as L;
             let mut pc = L::S;
@@ -317,9 +345,9 @@ pub mod demo {
             loop {
                 pc = match pc {
                     L::S => {
-                        if self.i_in(&['a', 'c']) { self.add(L::S_1); }
-                        if self.i_in(&['a', 'b']) { self.add(L::S_2); }
-                        if self.i_in_end(&['d']) { self.add(L::S_3); }
+                        if self.i_in(&['a', 'c']) { self.add_s(L::S_1); }
+                        if self.i_in(&['a', 'b']) { self.add_s(L::S_2); }
+                        if self.i_in_end(&['d']) { self.add_s(L::S_3); }
                         L::_0
                     }
 
@@ -342,9 +370,9 @@ pub mod demo {
                             }
                         }
                     }
-                    L::S_1 => { self.push(L::_1); goto!( L::A ); }
+                    L::S_1 => { self.create(L::_1); goto!( L::A ); }
 
-                    L::_1 => { self.push(L::_2); goto!( L::S ); }
+                    L::_1 => { self.create(L::_2); goto!( L::S ); }
 
                     L::_2 => {
                         if self.i_in(&['d']) {
@@ -354,9 +382,9 @@ pub mod demo {
                         goto!( L::_0 );
                     }
 
-                    L::S_2 => { self.push(L::_3); goto!( L::B ); }
+                    L::S_2 => { self.create(L::_3); goto!( L::B ); }
 
-                    L::_3 => { self.push(L::_4); goto!( L::_0 ); }
+                    L::_3 => { self.create(L::_4); goto!( L::_0 ); }
 
                     L::_4 => { self.pop(); goto!( L::_0 ); }
 
