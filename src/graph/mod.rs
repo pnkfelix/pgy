@@ -1,6 +1,8 @@
 use arena::{ArenaMut};
 use arena::{ArenaVex, ArenaVexIter};
 
+pub mod gss;
+
 // Values carrying some state uniquely identifying them relative to
 // their type.
 pub trait Id {
