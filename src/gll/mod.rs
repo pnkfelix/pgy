@@ -310,42 +310,47 @@ pub mod demo_section_2 {
     // A ::= a | c
     // B ::= a | b
 
+    #[cfg(test)]
+    fn demo(input: &'static str) -> Result<Success> {
+        Context::new(input.as_bytes()).main()
+    }
+
     #[test]
     fn demo_1() {
-        Context::new("ad".as_bytes()).main().unwrap();
-        Context::new("aadd".as_bytes()).main().unwrap();
-        Context::new("acdd".as_bytes()).main().unwrap();
-        Context::new("cadd".as_bytes()).main().unwrap();
+        demo("ad").unwrap();
+        demo("aadd").unwrap();
+        demo("acdd").unwrap();
+        demo("cadd").unwrap();
     }
 
     #[test]
     fn demo_2() {
-        Context::new("b".as_bytes()).main().unwrap();
-        Context::new("bb".as_bytes()).main().unwrap();
-        Context::new("bbb".as_bytes()).main().unwrap();
+        demo("b").unwrap();
+        demo("bb").unwrap();
+        demo("bbb").unwrap();
     }
 
     #[test]
     fn demo_3() {
-        Context::new("bad".as_bytes()).main().unwrap();
-        Context::new("bcd".as_bytes()).main().unwrap();
-        Context::new("bbad".as_bytes()).main().unwrap();
-        Context::new("bbcd".as_bytes()).main().unwrap();
-        Context::new("abd".as_bytes()).main().unwrap();
-        Context::new("cbd".as_bytes()).main().unwrap();
-        Context::new("bacdd".as_bytes()).main().unwrap();
-        Context::new("bcadd".as_bytes()).main().unwrap();
-        Context::new("bbcadd".as_bytes()).main().unwrap();
-        Context::new("bbacdd".as_bytes()).main().unwrap();
-        Context::new("bbaacddd".as_bytes()).main().unwrap();
-        Context::new("bbaccddd".as_bytes()).main().unwrap();
-        Context::new("bbcacddd".as_bytes()).main().unwrap();
+        demo("bad").unwrap();
+        demo("bcd").unwrap();
+        demo("bbad").unwrap();
+        demo("bbcd").unwrap();
+        demo("abd").unwrap();
+        demo("cbd").unwrap();
+        demo("bacdd").unwrap();
+        demo("bcadd").unwrap();
+        demo("bbcadd").unwrap();
+        demo("bbacdd").unwrap();
+        demo("bbaacddd").unwrap();
+        demo("bbaccddd").unwrap();
+        demo("bbcacddd").unwrap();
     }
 
     #[cfg(ignored)] // this one, exercising the first alt of B, doesn't work yet.
     #[test]
     fn demo_4() {
-        Context::new("a".as_bytes()).main().unwrap();
+        demo("a").unwrap();
     }
 
     use super::*;
