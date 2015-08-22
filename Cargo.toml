@@ -1,0 +1,7 @@
+[package]
+name = "pgy"
+version = "0.1.0"
+authors = ["pnkfelix"]
+
+[dependencies]
+typed-arena = "1.0.1"
