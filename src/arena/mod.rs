@@ -22,12 +22,12 @@ pub struct ArenaVex<T> {
     chunks: RefCell<Vec<Vec<T>>>,
 }
 
-pub type ArenaVexIter<'a, T> = iter::FlatMap<vec::IntoIter<&'a Vec<T>>, slice::Iter<'a, T>, v_iter_fn<'a, T>>;
+pub type ArenaVexIter<'a, T> = iter::FlatMap<vec::IntoIter<slice::Iter<'a, T>>, slice::Iter<'a, T>, s_iter_fn<'a, T>>;
 
 #[allow(non_camel_case_types)]
-type v_iter_fn<'a, T> = fn(&'a Vec<T>) -> slice::Iter<'a, T>;
+type s_iter_fn<'a, T> = fn(s: slice::Iter<'a, T>) -> slice::Iter<'a, T>;
 
-fn v_iter<'a, T>(v: &'a Vec<T>) -> slice::Iter<'a, T> { v.iter() }
+fn s_iter<'a, T>(s: slice::Iter<'a, T>) -> slice::Iter<'a, T> { s }
 
 impl<T> ArenaVex<T> {
     pub fn new() -> ArenaVex<T> { ArenaVex::with_capacity(8) }
@@ -60,8 +60,10 @@ impl<T> ArenaVex<T> {
     // it is also the worst-case cost of push in this scheme.
     pub fn iter<'a>(&'a self) -> ArenaVexIter<'a, T> {
         let b = self.chunks.borrow();
-        let c: Vec<_> = b.iter().collect();
-        let iter = c.into_iter().flat_map(v_iter::<T> as v_iter_fn<T>);
+        let c: Vec<_> = b.iter()
+            .map(|v|v.iter())
+            .collect();
+        let iter = c.into_iter().flat_map(s_iter::<T> as s_iter_fn<T>);
         // these references are guaranteed to survive as long as 'a;
         // the borrow checker does not know this, because it thinks
         // the individual chunks might be dropped from the outer vec
