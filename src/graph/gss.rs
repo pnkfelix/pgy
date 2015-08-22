@@ -1,5 +1,5 @@
 use arena::{ArenaMut};
-use arena::{ArenaVex};
+use arena::{ArenaVex, ArenaVexIter};
 
 pub struct Graph<'nodes, T: 'nodes> {
     /// the actual backing store of nodes
@@ -9,10 +9,16 @@ pub struct Graph<'nodes, T: 'nodes> {
     nodes: ArenaVex<&'nodes Node<'nodes, T>>,
 }
 
+pub type Nodes<'a, T> = ArenaVexIter<'a, &'a Node<'a, T>>;
+
 impl<'n, T> Graph<'n, T> {
     pub fn new() -> Self {
         let arena = ArenaMut::new();
         Graph { arena: arena, nodes: ArenaVex::new() }
+    }
+
+    pub fn nodes(&'n self) -> Nodes<'n, T> {
+        self.nodes.iter()
     }
 
     pub fn add_node(&'n self, t: T, child: &'n Node<'n, T>) -> &Node<'n, T> {
