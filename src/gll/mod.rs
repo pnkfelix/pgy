@@ -69,7 +69,7 @@ pub mod demo {
     struct Stack<'g>(&'g Node<'g, GData>);
     impl<'g> PartialEq for Stack<'g> {
         fn eq(&self, rhs: &Stack<'g>) -> bool {
-            (self as *const _) == (rhs as *const _)
+            (self.0 as *const _) == (rhs.0 as *const _)
         }
     }
     impl<'g> Stack<'g> {
@@ -96,25 +96,34 @@ pub mod demo {
             write!(w, "]")
         }
     }
-    type G<'g> = Graph<'g, GData>;
+    #[derive(Copy, Clone)]
+    struct G<'g> {
+        graph: &'g Graph<'g, GData>,
+        dummy: &'g Node<'g, GData>,
+    }
     struct R<'g> {
         todo: Vec<Desc<'g>>,
         seen: Vec<Desc<'g>>, // (actually a set)
     }
     impl<'g> ::std::fmt::Debug for R<'g> {
         fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-            write!(w, "{{");
+            write!(w, "R {{ todo: [");
             let mut seen_one = false;
-            for d in &self.seen {
+            for d in &self.todo {
                 if seen_one { write!(w, ", "); }
-                if self.todo.contains(&d) {
+                write!(w, "{:?}", d);
+                seen_one = true;
+            }
+            write!(w, "], seen: {{");
+            seen_one = false;
+            for d in &self.seen {
+                if !self.todo.contains(&d) {
+                    if seen_one { write!(w, ", "); }
                     write!(w, "{:?}", d);
                     seen_one = true;
-                } else {
-                    // write!(w, "({:?})", d);
                 }
             }
-            write!(w, "}}")
+            write!(w, "}} }}")
         }
     }
 
@@ -124,6 +133,7 @@ pub mod demo {
         }
         fn add(&mut self, d: Desc<'g>) {
             if !self.seen.contains(&d) {
+                println!("    R::add d: {:?}", d);
                 self.seen.push(d);
                 self.todo.push(d);
             }
@@ -140,7 +150,7 @@ pub mod demo {
         i: InputPos,
         I: &'i [T],
         r: R<'g>,
-        g: &'g G<'g>,
+        g: G<'g>,
         s: Stack<'g>,
     }
 
@@ -157,13 +167,15 @@ pub mod demo {
     }
 
     impl<'i, 'g> Context<'i, 'g> {
-        pub fn new(t: &'i [u8], g: &'g G<'g>) -> Context<'i, 'g> {
-            let dummy = g.add_dummy();
+        pub fn new(t: &'i [u8], g: &'g Graph<'g, GData>) -> Context<'i, 'g> {
+            use self::Label as L;
+            let d = g.add_dummy();
+            let s = g.add_node((L::_0, InputPos(0)), d);
             Context { i: InputPos(0),
                       I: ts(t),
                       r: R::new(),
-                      g: g,
-                      s: Stack(dummy)
+                      g: G { graph: g, dummy: d },
+                      s: Stack(s),
             }
         }
         fn i_in_core(&self, terms: &[char], end: EndToken) -> bool {
@@ -178,7 +190,7 @@ pub mod demo {
 
         fn push(&mut self, l: Label) {
             println!("  push self: {:?} l: {:?}", self, l);
-            let p = self.g.add_node((l, self.i), self.s.0);
+            let p = self.g.graph.add_node((l, self.i), self.s.0);
             self.s = Stack(p);
         }
 
@@ -191,11 +203,15 @@ pub mod demo {
                 Node::Data(ref dn) => {
                     let d = &dn.data;
                     let s_prime = Stack(dn.child());
-                    let desc = Desc(d.0, s_prime, self.i);
-                    self.r.add(desc);
                     self.s = s_prime;
+                    self.add(d.0);
                 }
             }
+        }
+
+        fn add(&mut self, l: Label) {
+            let j = self.i;
+            self.r.add(Desc(l, self.s, j));
         }
 
         fn main(&mut self) -> Result<Success> {
@@ -212,25 +228,29 @@ pub mod demo {
             loop {
                 pc = match pc {
                     L::S => {
-                        if self.i_in(&['a', 'c']) { self.r.add(Desc(L::S_1, self.s, self.i)); }
-                        if self.i_in(&['a', 'b']) { self.r.add(Desc(L::S_2, self.s, self.i)); }
-                        if self.i_in_end(&['d']) { self.r.add(Desc(L::S_3, self.s, self.i)); }
+                        if self.i_in(&['a', 'c']) { self.add(L::S_1); }
+                        if self.i_in(&['a', 'b']) { self.add(L::S_2); }
+                        if self.i_in_end(&['d']) { self.add(L::S_3); }
                         L::_0
                     }
 
                     L::_0 => {
                         match self.r.pop() {
-                            Some(Desc(L, s_1, j)) => {
-                                if L == L::_0 && s_1.empty() && j.0 == self.I.len() {
+                            Some(Desc(L, u, j)) => {
+                                self.s = u;
+                                self.i = j;
+                                goto!( L );
+                            }
+                            None => {
+                                if self.r.seen.contains(
+                                    &Desc(L::_0,
+                                          Stack(self.g.dummy),
+                                          InputPos(self.I.len()))) {
                                     return Ok(Success);
                                 } else {
-                                    self.s = s_1;
-                                    self.i = j;
-                                    goto!( L )
+                                    return Err(ParseError);
                                 }
                             }
-                            None =>
-                                return Err(ParseError),
                         }
                     }
                     L::S_1 => { self.push(L::_1); goto!( L::A ); }
