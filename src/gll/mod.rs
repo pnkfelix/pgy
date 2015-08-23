@@ -153,7 +153,29 @@ pub mod demo {
     }
     #[derive(Copy, Clone, PartialEq, Debug)]
     struct Desc<'g>(Label, Stack<'g>, InputPos);
-    type GData = Option<(Label, InputPos)>;
+    #[derive(Copy, Clone, PartialEq)]
+    struct GData(Option<(Label, InputPos)>);
+    impl GData {
+        fn dummy() -> GData { GData(None) }
+        fn new(l: Label, i: InputPos) -> GData {
+            GData(Some((l, i)))
+        }
+        fn label(&self) -> Label {
+            self.0.unwrap().0
+        }
+    }
+    impl ::std::fmt::Debug for GData {
+        fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+            match self.0 {
+                None => {
+                    write!(w, "$")
+                }
+                Some(p) => {
+                    write!(w, "{:?}^{:?}", p.0, (p.1).0)
+                }
+            }
+        }
+    }
     #[derive(Copy, Clone)]
     struct Stack<'g>(&'g Node<'g, GData>);
     impl<'g> PartialEq for Stack<'g> {
@@ -261,8 +283,8 @@ pub mod demo {
     impl<'i, 'g> Context<'i, 'g> {
         pub fn new(t: &'i [u8], g: &'g Graph<'g, GData>) -> Context<'i, 'g> {
             use self::Label as L;
-            let d = g.add_node(None);
-            let s = g.add_node(Some((L::_0, InputPos(0))));
+            let d = g.add_node(GData::dummy());
+            let s = g.add_node(GData::new(L::_0, InputPos(0)));
             s.add_child(d);
             Context { i: InputPos(0),
                       I: ts(t),
@@ -289,14 +311,14 @@ pub mod demo {
     impl<'i, 'g> Context<'i, 'g> {
         fn create(&mut self, l: Label) {
             println!("  create self: {:?} l: {:?}", self, l);
-            let L_j = (l, self.i);
+            let L_j = GData::new(l, self.i);
             let u = self.s;
             let v = self.g.graph.nodes()
-                .find(|n| n.data == Some(L_j) )
+                .find(|n| n.data == L_j)
                 .map(|p|*p);
             let v = match v {
                 Some(v) => v,
-                None => self.g.graph.add_node(Some(L_j))
+                None => self.g.graph.add_node(L_j)
             };
             if v.children().find(|c| Stack(c) == u).is_none() {
                 v.add_child(u.0);
@@ -312,7 +334,7 @@ pub mod demo {
             let j = self.i;
             if u != Stack(self.g.dummy) {
                 self.popped.add((u, j));
-                let L_u = u.0.data.unwrap().0;
+                let L_u = u.0.data.label();
                 for v in u.0.children() {
                     self.add(L_u, Stack(v), j);
                 }
