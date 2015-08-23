@@ -384,7 +384,7 @@ pub mod demo {
 
                     L::S_2 => { self.create(L::_3); goto!( L::B ); }
 
-                    L::_3 => { self.create(L::_4); goto!( L::_0 ); }
+                    L::_3 => { self.create(L::_4); goto!( L::S ); }
 
                     L::_4 => { self.pop(); goto!( L::_0 ); }
 
