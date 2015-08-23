@@ -330,6 +330,11 @@ pub mod demo {
             };
             if v.children().find(|c| Stack(c) == u).is_none() {
                 v.add_child(u.0);
+                for &(p, k) in self.popped.elems() {
+                    if p == Stack(v) {
+                        self.r.add(Desc(l, u, k));
+                    }
+                }
             }
             self.s = Stack(v);
         }
