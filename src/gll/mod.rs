@@ -1,5 +1,11 @@
 #![allow(dead_code, unused_must_use, unused_mut, non_snake_case)]
 
+macro_rules! db {
+    ($($tt:expr),*) => {
+        println!($($tt),*)
+    }
+}
+
 #[derive(Debug)]
 pub struct ParseError;
 pub struct Success;
@@ -254,7 +260,7 @@ pub mod demo {
         }
         fn add(&mut self, d: Desc<'g>) {
             if !self.seen.contains(&d) {
-                println!("    R::add d: {:?}", d);
+                db!("    R::add d: {:?}", d);
                 self.seen.push(d);
                 self.todo.push(d);
             }
@@ -318,7 +324,7 @@ pub mod demo {
 
     impl<'i, 'g> Context<'i, 'g> {
         fn create(&mut self, l: Label) {
-            println!("  create self: {:?} l: {:?}", self, l);
+            db!("  create self: {:?} l: {:?}", self, l);
             let L_j = GData::new(l, self.i);
             let u = self.s;
             let v = self.g.graph.nodes()
@@ -340,7 +346,7 @@ pub mod demo {
         }
 
         fn pop(&mut self) {
-            println!("  pop self: {:?}", self);
+            db!("  pop self: {:?}", self);
             // pop L off stack s = s'::L, add (L, s', i) to R, where
             // i is current input position.
             let u = self.s;
@@ -371,7 +377,7 @@ pub mod demo {
             let mut pc = L::S;
             macro_rules! goto {
                 ($l:expr) => {
-                    { println!("goto {:?} to {:?}", pc, $l);
+                    { db!("goto {:?} to {:?}", pc, $l);
                       pc = $l;
                       continue;
                     }
