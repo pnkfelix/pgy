@@ -2,7 +2,7 @@
 
 macro_rules! db {
     ($($tt:expr),*) => {
-        println!($($tt),*)
+        // println!($($tt),*)
     }
 }
 
