@@ -190,9 +190,17 @@ pub mod demo {
     }
     impl<'g> ::std::fmt::Debug for Stack<'g> {
         fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-            write!(w, "Stack {{");
-            write!(w, "label: [ {:?}", self.0.data);
-            write!(w, "children: [..] }}")
+            write!(w, "Stack [ ");
+            let mut n = self.0;
+            loop {
+                write!(w, "{:?} ", n.data);
+                match n.children().count() {
+                    0 => break,
+                    1 => { n = n.children().next().unwrap(); }
+                    _ => { write!(w, ".."); break; }
+                }
+            }
+            write!(w, "]")
         }
     }
     #[derive(Copy, Clone)]
