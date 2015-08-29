@@ -249,19 +249,15 @@ fn identify_follows(rules: &[Rule],
     while changed {
         changed = false;
         for rule in rules {
-            println!("identify_follows visiting rule {:?}", rule);
             let Rule { left, ref right_hands } = *rule;
 
             let mut prevs: Vec<NontermName> = Vec::new();
             for right_hand in right_hands {
-                println!("  identify_follows visiting rh {:?}", right_hand);
                 prevs.clear();
                 for s in right_hand {
-                    println!("    identify_follows prevs: {:?} visiting s {:?}", prevs, s);
                     match *s {
                         Sym::T(t) => {
                             for p in &prevs {
-                                println!("add {} to follows[{}]", t, p);
                                 follows.get_mut(p).unwrap().add(t, &mut changed);
                             }
                             prevs.clear();
@@ -269,7 +265,6 @@ fn identify_follows(rules: &[Rule],
                         Sym::N(n) => {
                             for t in &firsts[n] {
                                 for p in &prevs {
-                                    println!("add {} to follows[{}]", t, p);
                                     follows.get_mut(p).unwrap().add(*t, &mut changed);
                                 }
                             }
