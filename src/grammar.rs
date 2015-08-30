@@ -26,6 +26,7 @@ impl<T:Eq> SetUpdate<T> for Set<T> {
     }
 }
 
+pub type Nonterms = Set<NontermName>;
 pub type Terms = Set<TermName>;
 pub struct TermsEm {
     terms: Terms,
@@ -41,6 +42,7 @@ pub struct TermsEnd {
     // whether `$` can follow A should depend on the various contexts
     // in which A appears.)
     is_nullable: bool,
+    end_follows: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -95,6 +97,7 @@ pub struct PreGrammar3 {
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
+    end_follows: Nonterms
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -103,6 +106,7 @@ pub struct Grammar {
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
+    end_follows: Nonterms
 }
 
 fn all_left_unique(rules: &[Rule]) -> bool {
@@ -139,12 +143,13 @@ impl PreGrammar1 {
 impl PreGrammar2 {
     fn identify_follows(self) -> PreGrammar3 {
         let PreGrammar2 { rules, nullable, firsts } = self;
-        let follows = identify_follows(&rules[..], &nullable, &firsts);
+        let (follows, end_follows) = identify_follows(&rules[..], &nullable, &firsts);
         PreGrammar3 {
             rules: rules,
             nullable: nullable,
             firsts: firsts,
             follows: follows,
+            end_follows: end_follows,
         }
     }
 }
@@ -156,12 +161,13 @@ impl PreGrammar3 {
             nullable: self.nullable,
             firsts: self.firsts,
             follows: self.follows,
+            end_follows: self.end_follows,
         }
     }
 }
 
 fn identify_nullables(rules: &[Rule]) -> Nullable {
-    let mut changed = true;
+    let mut changed = true;;
     let mut nullable = HashSet::new();
     while changed {
         changed = false;
@@ -187,7 +193,7 @@ fn identify_nullables(rules: &[Rule]) -> Nullable {
                 // non-terminals, and thus `left` is itself nullable.
 
                 nullable.insert(left);
-                changed = true;
+                changed = true;;
                 continue 'rules;
             }
         }
@@ -201,7 +207,7 @@ fn identify_firsts(rules: &[Rule], nullable: &Nullable) -> Firsts {
     for rule in rules {
         firsts.insert(rule.left, set());
     }
-    let mut changed = true;
+    let mut changed = true;;
     while changed {
         changed = false;
 
@@ -252,7 +258,7 @@ fn identify_firsts(rules: &[Rule], nullable: &Nullable) -> Firsts {
 
 fn identify_follows(rules: &[Rule],
                     nullable: &Nullable,
-                    firsts: &Firsts) -> Follows {
+                    firsts: &Firsts) -> (Follows, Nonterms) {
     let mut follows = HashMap::new();
     let mut end_follows = Vec::new();
 
@@ -261,7 +267,7 @@ fn identify_follows(rules: &[Rule],
     }
     end_follows.add_(rules[0].left);
 
-    let mut changed = true;
+    let mut changed = true;;
     while changed {
         changed = false;
         for rule in rules {
@@ -327,11 +333,11 @@ fn identify_follows(rules: &[Rule],
         follow.sort();
     }
 
-    follows
+    (follows, end_follows)
 }
 
 impl Grammar {
-    fn new(rules: Vec<Rule>) -> Grammar {
+    pub fn new(rules: Vec<Rule>) -> Grammar {
         assert!(all_left_unique(&rules[..]));
         // TODO: add checks that all non-terminals are live and defined
 
@@ -345,7 +351,7 @@ impl Grammar {
 }
 
 impl Grammar {
-    fn start(&self) -> NontermName {
+    pub fn start(&self) -> NontermName {
         self.rules[0].left
     }
 
@@ -355,6 +361,43 @@ impl Grammar {
 
     fn follow_t(&self, a: NontermName) -> &[TermName] {
         &self.follows[a][..]
+    }
+
+    pub fn first(&self, alpha: &[Sym]) -> TermsEm {
+        let mut terms = Terms::new();
+        let mut once = true;
+        let mut maybe_empty = false;
+        'done: while once {
+            once = false;
+            for s in alpha {
+                match *s {
+                    Sym::T(t) => { terms.add_(t); break 'done; }
+                    Sym::N(a) => {
+                        for t in self.first_t(a) {
+                            terms.add_(*t);
+                        }
+                        if !self.nullable.contains(&a) {
+                            break 'done;
+                        }
+                    }
+                }
+            }
+            maybe_empty = true;
+        }
+
+        TermsEm {
+            terms: terms,
+            is_nullable: maybe_empty,
+        }
+    }
+
+    pub fn follow(&self, a: NontermName) -> TermsEnd {
+        let terms: Terms = self.follow_t(a).iter().cloned().collect();
+        TermsEnd {
+            terms: terms,
+            is_nullable: self.nullable.contains(a),
+            end_follows: self.end_follows.contains(&a),
+        }
     }
 }
 
