@@ -362,7 +362,9 @@ impl Grammar {
     fn follow_t(&self, a: NontermName) -> &[TermName] {
         &self.follows[a][..]
     }
+}
 
+impl Grammar {
     pub fn first(&self, alpha: &[Sym]) -> TermsEm {
         let mut terms = Terms::new();
         let mut once = true;
@@ -390,7 +392,9 @@ impl Grammar {
             is_nullable: maybe_empty,
         }
     }
+}
 
+impl Grammar {
     pub fn follow(&self, a: NontermName) -> TermsEnd {
         let terms: Terms = self.follow_t(a).iter().cloned().collect();
         TermsEnd {
