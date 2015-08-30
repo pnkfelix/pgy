@@ -27,8 +27,21 @@ impl<T:Eq> SetUpdate<T> for Set<T> {
 }
 
 pub type Terms = Set<TermName>;
-pub type TermsEm = Set<TermEm>;
-pub type TermsEnd = Set<TermEnd>;
+pub struct TermsEm {
+    terms: Terms,
+    is_nullable: bool,
+}
+
+pub struct TermsEnd {
+    terms: Terms,
+    // I'm following the definition of FOLLOW(A) given in the GLL
+    // paper, which includes {$} if A is nullable.
+    //
+    // (This does not seem quite right to me though; the question of
+    // whether `$` can follow A should depend on the various contexts
+    // in which A appears.)
+    is_nullable: bool,
+}
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Sym {
@@ -241,9 +254,12 @@ fn identify_follows(rules: &[Rule],
                     nullable: &Nullable,
                     firsts: &Firsts) -> Follows {
     let mut follows = HashMap::new();
+    let mut end_follows = Vec::new();
+
     for rule in rules {
         follows.insert(rule.left, set());
     }
+    end_follows.add_(rules[0].left);
 
     let mut changed = true;
     while changed {
@@ -289,10 +305,15 @@ fn identify_follows(rules: &[Rule],
                 // side `B C` may occur in a context `A [] 'd'` and
                 // the C is nullable (from the epsilon),
 
+                let follows_left = follows[left].clone();
                 for p in &prevs {
-                    let follows_left = follows[left].clone();
-                    for t in follows_left {
-                        follows.get_mut(p).unwrap().add(t, &mut changed);
+                    for t in &follows_left {
+                        follows.get_mut(p).unwrap().add(*t, &mut changed);
+                    }
+                }
+                if end_follows.contains(&left) {
+                    for p in &prevs {
+                        end_follows.add(p, &mut changed);
                     }
                 }
             }
