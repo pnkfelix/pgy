@@ -57,7 +57,7 @@ impl SetCompare for TermsEm {
     fn null_intersects(&self, other: &Self) -> bool {
         self.terms.null_intersects(&other.terms) &&
             // FIXME: is the right way to handle `$`?
-            self.is_nullable != other.is_nullable
+            !(self.is_nullable && other.is_nullable)
     }
     fn same_contents(&self, other: &Self) -> bool {
         self.terms.same_contents(&other.terms) &&
@@ -590,4 +590,10 @@ fn test_follow_t() {
     // S -> BS -> BASd -> BcSd
     // S -> ASd -> ABSd -> ABd
     assert_eq!(g.follow_t("B"), ['a', 'b', 'c', 'd']);
+}
+
+#[test]
+fn test_ll1_nonterms() {
+    let g = demo_grammar();
+    assert!(g.ll1s.same_contents(&vec!["A", "B"]));
 }
