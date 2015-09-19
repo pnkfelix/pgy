@@ -67,6 +67,7 @@ impl SetCompare for TermsEm {
 
 pub type Nonterms = Set<NontermName>;
 pub type Terms = Set<TermName>;
+#[derive(Debug)]
 pub struct TermsEm {
     terms: Terms,
     is_nullable: bool,
@@ -296,6 +297,9 @@ fn identify_ll1s(rules: &[Rule],
                 let first_alpha = first(fic, alpha);
                 let first_beta = first(fic, beta);
                 if !first_alpha.null_intersects(&first_beta) {
+                    println!("rule: {:?} is not LL(1) because \
+                             {:?} = FIRST({:?}) intersects FIRST({:?}) = {:?}",
+                             rule, first_alpha, alpha, beta, first_beta);
                     continue 'next_rule;
                 }
             }
@@ -304,13 +308,19 @@ fn identify_ll1s(rules: &[Rule],
         if fic.nullable.contains(A) {
             let a_first = &fic.firsts[A];
             let a_follow = &foc.follows[A];
-            if !a_first.same_contents(&a_follow) {
+            if !a_first.null_intersects(&a_follow) {
+                println!("rule: {:?} is not LL(1) because it is nullable and \
+                          {:?} = FIRST({:?} intersects FOLLOW({:?}) = {:?}",
+                         rule, a_first, A, A, a_follow);
                 continue 'next_rule;
             }
 
             // FIXME: Is this the right way to deal with `$` in the
             // abstract sets?
-            if fic.nullable.contains(A) != foc.end_follows.contains(&A) {
+            if !foc.end_follows.contains(&A) {
+                println!("rule: {:?} is not LL(1) because \
+                          `$` not in FOLLOW({:?})",
+                         rule, A);
                 continue 'next_rule;
             }
         }
