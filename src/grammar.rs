@@ -26,6 +26,45 @@ impl<T:Eq> SetUpdate<T> for Set<T> {
     }
 }
 
+trait SetCompare {
+    fn null_intersects(&self, other: &Self) -> bool;
+    fn same_contents(&self, other: &Self) -> bool;
+}
+
+impl<T:Eq> SetCompare for Set<T> {
+    fn null_intersects(&self, other: &Self) -> bool {
+        for a in self {
+            for b in other {
+                if a == b {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+    fn same_contents(&self, other: &Self) -> bool {
+        for a in self {
+            if !other.contains(a) { return false; }
+        }
+        for b in other {
+            if !self.contains(b) { return false; }
+        }
+        return true;
+    }
+}
+
+impl SetCompare for TermsEm {
+    fn null_intersects(&self, other: &Self) -> bool {
+        self.terms.null_intersects(&other.terms) &&
+            // FIXME: is the right way to handle `$`?
+            self.is_nullable != other.is_nullable
+    }
+    fn same_contents(&self, other: &Self) -> bool {
+        self.terms.same_contents(&other.terms) &&
+            self.is_nullable == other.is_nullable
+    }
+}
+
 pub type Nonterms = Set<NontermName>;
 pub type Terms = Set<TermName>;
 pub struct TermsEm {
@@ -40,7 +79,8 @@ pub struct TermsEnd {
     //
     // (This does not seem quite right to me though; the question of
     // whether `$` can follow A should depend on the various contexts
-    // in which A appears.)
+    // in which A appears. But it may be a technical detail that allows
+    // their definition of the LL(1)-ness of a nonterminal A to go through.
     is_nullable: bool,
     end_follows: bool,
 }
@@ -100,13 +140,23 @@ pub struct PreGrammar3 {
     end_follows: Nonterms
 }
 
+pub struct PreGrammar4 {
+    rules: Vec<Rule>,
+    nullable: Nullable,
+    firsts: Firsts,
+    follows: Follows,
+    end_follows: Nonterms,
+    ll1s: Nonterms,
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Grammar {
     rules: Vec<Rule>,
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
-    end_follows: Nonterms
+    end_follows: Nonterms,
+    ll1s: Nonterms,
 }
 
 fn all_left_unique(rules: &[Rule]) -> bool {
@@ -154,7 +204,124 @@ impl PreGrammar2 {
     }
 }
 
+#[derive(Copy, Clone)]
+struct FirstContext<'a> {
+    nullable: &'a Nullable,
+    firsts: &'a Firsts,
+}
+
+#[derive(Copy, Clone)]
+struct FollowContext<'a> {
+    follows: &'a Follows,
+    end_follows: &'a Nonterms,
+}
+
 impl PreGrammar3 {
+    fn identify_ll1s(self) -> PreGrammar4 {
+        let PreGrammar3 {
+            rules: rules,
+            nullable: nullable,
+            firsts: firsts,
+            follows: follows,
+            end_follows: end_follows,
+        } = self;
+
+        let ll1s = {
+            let fic = FirstContext { nullable: &nullable,
+                                     firsts: &firsts };
+            let foc = FollowContext { follows: &follows,
+                                      end_follows: &end_follows };
+
+            identify_ll1s(&rules[..], fic, foc)
+        };
+
+        PreGrammar4 {
+            rules: rules,
+            nullable: nullable,
+            firsts: firsts,
+            follows: follows,
+            end_follows: end_follows,
+            ll1s: ll1s,
+        }
+    }
+}
+
+fn first(ctxt: FirstContext, alpha: &[Sym]) -> TermsEm {
+    let FirstContext { nullable, firsts } = ctxt;
+    let mut first = Terms::new();
+    let mut broke_before_end = false;
+    for s in alpha {
+        match *s {
+            Sym::T(term) => {
+                first.add_(term);
+                broke_before_end = true;
+                break;
+            }
+            Sym::N(nonterm) => {
+                for t in &firsts[nonterm] {
+                    first.add_(*t);
+                }
+                if nullable.contains(nonterm) {
+                    continue;
+                } else {
+                    broke_before_end = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    TermsEm {
+        terms: first,
+        is_nullable: !broke_before_end,
+    }
+}
+
+// A Nonterm A is LL(1) if
+// (i) A ::= \alpha, A ::= \beta imply FIRST(\alpha) & FIRST(\beta) = null, and
+// (ii) if A =>^* epsilon then FIRST(A) & FOLLOW(A) = null.
+fn identify_ll1s(rules: &[Rule],
+                 fic: FirstContext,
+                 foc: FollowContext) -> Nonterms {
+    let mut nonterms: Nonterms = set();
+
+    // this is already asserted by `Grammar::new`, so a debug_assert
+    // is really just a reminder here.
+    debug_assert!(all_left_unique(rules));
+
+    'next_rule: for rule in rules {
+        let &Rule { left: A, ref right_hands } = rule;
+        for (i, ref alpha) in right_hands.iter().enumerate() {
+            for ref beta in &right_hands[(i+1)..] {
+                let first_alpha = first(fic, alpha);
+                let first_beta = first(fic, beta);
+                if !first_alpha.null_intersects(&first_beta) {
+                    continue 'next_rule;
+                }
+            }
+        }
+
+        if fic.nullable.contains(A) {
+            let a_first = &fic.firsts[A];
+            let a_follow = &foc.follows[A];
+            if !a_first.same_contents(&a_follow) {
+                continue 'next_rule;
+            }
+
+            // FIXME: Is this the right way to deal with `$` in the
+            // abstract sets?
+            if fic.nullable.contains(A) != foc.end_follows.contains(&A) {
+                continue 'next_rule;
+            }
+        }
+
+        nonterms.add_(A);
+    }
+
+    nonterms
+}
+
+impl PreGrammar4 {
     fn finalize(self) -> Grammar {
         Grammar {
             rules: self.rules,
@@ -162,6 +329,7 @@ impl PreGrammar3 {
             firsts: self.firsts,
             follows: self.follows,
             end_follows: self.end_follows,
+            ll1s: self.ll1s,
         }
     }
 }
@@ -256,6 +424,10 @@ fn identify_firsts(rules: &[Rule], nullable: &Nullable) -> Firsts {
     firsts
 }
 
+// Returns `(follows, end_follows)` -- where `follows` is a map from
+// Nonterm to the set of terms that can follow it, and `end_follows`
+// is the set of Nonterms that can be followed by end of the input
+// (aka `$`).
 fn identify_follows(rules: &[Rule],
                     nullable: &Nullable,
                     firsts: &Firsts) -> (Follows, Nonterms) {
@@ -345,8 +517,9 @@ impl Grammar {
         let pg1 = pg0.identify_nullables();
         let pg2 = pg1.identify_firsts();
         let pg3 = pg2.identify_follows();
+        let pg4 = pg3.identify_ll1s();
 
-        pg3.finalize()
+        pg4.finalize()
     }
 }
 
@@ -366,31 +539,11 @@ impl Grammar {
 
 impl Grammar {
     pub fn first(&self, alpha: &[Sym]) -> TermsEm {
-        let mut terms = Terms::new();
-        let mut once = true;
-        let mut maybe_empty = false;
-        'done: while once {
-            once = false;
-            for s in alpha {
-                match *s {
-                    Sym::T(t) => { terms.add_(t); break 'done; }
-                    Sym::N(a) => {
-                        for t in self.first_t(a) {
-                            terms.add_(*t);
-                        }
-                        if !self.nullable.contains(&a) {
-                            break 'done;
-                        }
-                    }
-                }
-            }
-            maybe_empty = true;
-        }
-
-        TermsEm {
-            terms: terms,
-            is_nullable: maybe_empty,
-        }
+        let fic = FirstContext {
+            nullable: &self.nullable,
+            firsts: &self.firsts,
+        };
+        first(fic, alpha)
     }
 }
 
