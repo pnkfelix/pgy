@@ -34,3 +34,5 @@ fn ts(t: &[u8]) -> &[T] {
 pub mod demo;
 
 pub mod demo_section_2;
+
+pub mod codegen;

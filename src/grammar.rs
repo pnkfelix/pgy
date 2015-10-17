@@ -117,8 +117,8 @@ pub enum TermEnd {
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Rule<E:Copy=()> {
-    left: NontermName,
-    right_hands: Vec<Vec<Sym<E>>>,
+    pub left: NontermName,
+    pub right_hands: Vec<Vec<Sym<E>>>,
 }
 
 macro_rules! rule {
@@ -147,22 +147,24 @@ pub struct PreGrammar3<E:Copy=()> {
 }
 
 pub struct PreGrammar4<E:Copy=()> {
-    rules: Vec<Rule<E>>,
-    nullable: Nullable,
-    firsts: Firsts,
-    follows: Follows,
-    end_follows: Nonterms,
+     rules: Vec<Rule<E>>,
+     nullable: Nullable,
+     firsts: Firsts,
+     follows: Follows,
+     end_follows: Nonterms,
     ll1s: Nonterms,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Grammar<E:Copy=()> {
-    rules: Vec<Rule<E>>,
-    nullable: Nullable,
-    firsts: Firsts,
-    follows: Follows,
-    end_follows: Nonterms,
-    ll1s: Nonterms,
+    // FIXME these should all be private with accessors.
+
+    pub rules: Vec<Rule<E>>,
+    pub nullable: Nullable,
+    pub firsts: Firsts,
+    pub follows: Follows,
+    pub end_follows: Nonterms,
+    pub ll1s: Nonterms,
 }
 
 fn all_left_unique<E:Copy>(rules: &[Rule<E>]) -> bool {
