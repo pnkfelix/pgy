@@ -594,7 +594,7 @@ impl Grammar {
     }
 }
 
-impl Grammar {
+impl<E:Copy> Grammar<E> {
     pub fn start(&self) -> NontermName {
         self.rules[0].left
     }
@@ -608,7 +608,7 @@ impl Grammar {
     }
 }
 
-impl Grammar {
+impl<E:Copy> Grammar<E> {
     pub fn first(&self, alpha: &[Sym]) -> TermsEm {
         let fic = FirstContext {
             nullable: &self.nullable,
@@ -618,7 +618,7 @@ impl Grammar {
     }
 }
 
-impl Grammar {
+impl<E:Copy> Grammar<E> {
     pub fn follow(&self, a: NontermName) -> TermsEnd {
         let terms: Terms = self.follow_t(a).iter().cloned().collect();
         TermsEnd {
@@ -630,7 +630,7 @@ impl Grammar {
 }
 
 #[cfg(test)]
-fn demo_grammar() -> Grammar {
+pub fn demo_grammar() -> Grammar {
     Grammar::new(vec![rule!(S ::= ("A" "S" 'd'); ("B" "S"); ()),
                       rule!(A ::= ('a'); ('c')),
                       rule!(B ::= ('a'); ('b'))])

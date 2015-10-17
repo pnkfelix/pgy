@@ -4,11 +4,32 @@ use grammar::{Grammar, NontermName, TermName, Sym};
 use std::borrow::Cow;
 use std::mem;
 
+#[derive(Debug)]
 pub enum Command {
     One(String),
     Seq(Vec<Command>),
     If(Expr, Box<Command>),
     IfElse(Expr, Box<Command>, Box<Command>)
+}
+
+impl Command {
+    pub fn render(&self) -> String {
+        match *self {
+            Command::One(ref s) => s.clone(),
+            Command::Seq(ref cmds) => cmds.iter()
+                .map(|cmd| cmd.render() + "\n")
+                .collect(),
+            Command::If(ref e, ref t) =>
+                format!("if {} {{\n {} \n}}",
+                        e.0,
+                        t.render()),
+            Command::IfElse(ref e, ref tn, ref el) =>
+                format!("if {} {{\n {} \n}} else {{\n {} \n}}",
+                        e.0,
+                        tn.render(),
+                        el.render()),
+        }
+    }
 }
 
 pub enum CommandSeq { Just(Command), Rev(Vec<Command>) }
@@ -42,13 +63,21 @@ impl Iterator for CommandSeq {
     }
 }
 
+#[derive(Debug)]
 pub struct Expr(String);
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Label(Cow<'static, str>);
+#[derive(Debug)]
 pub struct Block(Label, Command);
 
-struct RustBackend<'a>(&'a Grammar);
+impl Block {
+    pub fn render(&self) -> String {
+        format!("{} => {{\n {} \n}}", (self.0).0, self.1.render())
+    }
+}
+
+pub struct RustBackend<'a>(&'a Grammar<usize>);
 
 impl<'a> Backend<'a> for RustBackend<'a> {
     type Command = Command;
@@ -56,13 +85,13 @@ impl<'a> Backend<'a> for RustBackend<'a> {
     type Label = Label;
     type Block = Block;
 
-    fn new(g: &'a Grammar) -> Self { RustBackend(g) }
+    fn new(g: &'a Grammar<usize>) -> Self { RustBackend(g) }
 
     fn label_0(&self) -> Label { Label("L::_0".into()) }
 
     // R_A_k labels function call return lines.
     fn return_label(&self, (a, k): (NontermName, usize)) -> Self::Label {
-        Label(format!("L::R_{}_{}", a, k).into())
+        Label(format!("L::R_{}_{}", a, k+1).into())
     }
 
     // L_A labels parse function for A.
@@ -73,7 +102,7 @@ impl<'a> Backend<'a> for RustBackend<'a> {
     // L_A_i labels function for parsing ith alternate α_i of A.
     fn alternate_label(&self,
                        (a, i): (NontermName, usize)) -> Self::Label {
-        Label(format!("L::A_{}_{}", a, i).into())
+        Label(format!("L::A_{}_{}", a, i+1).into())
     }
 
     // `L: C`
@@ -161,16 +190,35 @@ impl<'a> Backend<'a> for RustBackend<'a> {
 
         let first = self.0.first(&alpha);
         let first_terms: String = first.terms().iter()
-            .map(|t| format!("{},", t)).collect();
+            .map(|t| format!("'{}',", t)).collect();
         if first.is_nullable() {
             let follow = self.0.follow(a);
             let follow_terms: String = follow.terms().iter()
-                .map(|t|format!("{},", t)).collect();
+                .map(|t|format!("'{}',", t)).collect();
+
             // FIXME: should first do set-union between first_terms
             // and follow_terms on this branch, avoiding potential
             // duplication of effort below.
-            Expr(format!("(self.i_in(&[{}]) || self.i_in(&[{}]))",
-                         first_terms, follow_terms))
+
+            // FIXME: In addition to the other peephole optimizations
+            // (mentioned above or implemented below), we might also
+            // special-case when the set of terms *is* the universe of
+            // terminals, and just let that produce the expression
+            // `true` in that scenario.
+            //
+            // (Though in truth, it might be nice to bubble such
+            // an observation up to the higher level code generator,
+            // because there is a lot of redundant follow-on code
+            // being generated that we could just skip based on the
+            // observation.)
+
+            if first_terms.len() > 0 {
+                Expr(format!("(self.i_in(&[{}]) || self.i_in(&[{}]))",
+                             first_terms, follow_terms))
+            } else {
+                Expr(format!("(self.i_in(&[{}]))",
+                             follow_terms))
+            }
         } else {
             Expr(format!("self.i_in(&[{}])", first_terms))
         }

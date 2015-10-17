@@ -6,7 +6,7 @@ pub trait Backend<'a> {
     type Label: Clone;
     type Block;
 
-    fn new(g: &'a Grammar) -> Self;
+    fn new(g: &'a Grammar<usize>) -> Self;
 
     // (The label generators are all non `&mut self` because in
     // principle we should generate the labels ahead of time
@@ -52,9 +52,9 @@ pub trait Backend<'a> {
 
     // `if test { then } else { else_ }`
     fn if_else(&mut self,
-           test: Self::Expr,
-           then: Self::Command,
-           else_: Self::Command) -> Self::Command;
+               test: Self::Expr,
+               then: Self::Command,
+               else_: Self::Command) -> Self::Command;
 
     // `j := j + 1`
     fn increment_curr(&mut self) -> Self::Command;
@@ -92,14 +92,14 @@ pub trait Backend<'a> {
     fn pop(&mut self) -> Self::Command;
 }
 
-struct Codegen<'a, B:Backend<'a>+'a> {
-    backend: &'a mut B,
-    grammar: &'a Grammar,
+pub struct Codegen<'a, B:Backend<'a>+'a> {
+    pub backend: &'a mut B,
+    pub grammar: &'a Grammar<usize>,
 }
 
 impl<'a, C:Backend<'a>> Codegen<'a, C> {
     // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
-    fn on_term(&mut self, a: TermName) -> C::Command {
+    pub fn on_term(&mut self, a: TermName) -> C::Command {
         let b = &mut self.backend;
         let matches = b.curr_matches_term(a);
         let next_j = b.increment_curr();
@@ -113,7 +113,7 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
     //   } else {
     //      goto L_0
     //   }
-    fn on_nonterm_instance<E:Copy>(&mut self,
+    pub fn on_nonterm_instance<E:Copy>(&mut self,
                                    (a, k): (NontermName, usize),
                                    alpha: &[Sym<E>],
                                    x: NontermName) -> C::Command {
@@ -131,7 +131,7 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
     // code(α, j, X) = ...
     //
     // (driver for calling either of on_term/on_nonterm_instance)
-    fn on_symbols(&mut self,
+    pub fn on_symbols(&mut self,
                           alpha: &[Sym<usize>],
                           x: NontermName) -> C::Command {
         assert!(alpha.len() > 0);
@@ -150,11 +150,11 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
     //   code(   x2 .. x_f, j, A)
     //   ...
     //   code(         x_f, j, A)
-    fn on_symbols_in_prod(&mut self,
-                          alpha: &[Sym<usize>],
-                          a: NontermName) -> C::Command {
+    pub fn on_symbols_in_prod(&mut self,
+                              alpha: &[Sym<usize>],
+                              a: NontermName) -> C::Command {
         let mut c = self.backend.no_op();
-        for i in 0..alpha.len()-1 {
+        for i in 0..alpha.len() {
             let c2 = self.on_symbols(&alpha[i..], a);
             c = self.backend.seq(c, c2);
         }
@@ -182,7 +182,7 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
     //          pop(c_u, j)
     //          goto L_0
 
-    fn on_production(&mut self,
+    pub fn on_production(&mut self,
                      a: NontermName,
                      alpha: &[Sym<usize>]) -> (C::Command,
                                                Option<C::Block>) {
@@ -248,7 +248,7 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
     // ...
     // L_A_t: code(A ::= α_t, j)
     //
-    fn on_rule(&mut self,
+    pub fn on_rule(&mut self,
                r: Rule<usize>) -> (C::Command,
                                    Vec<C::Block>) {
         let Rule { left: a, right_hands: ref alphas } = r;

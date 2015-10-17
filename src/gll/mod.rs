@@ -31,8 +31,13 @@ fn ts(t: &[u8]) -> &[T] {
     unsafe { mem::transmute(t) }
 }
 
+#[cfg(test)]
 pub mod demo;
 
+#[cfg(test)]
 pub mod demo_section_2;
 
 pub mod codegen;
+
+#[cfg(test)]
+pub mod demo_codegen;
