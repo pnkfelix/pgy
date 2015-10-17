@@ -73,6 +73,11 @@ pub struct TermsEm {
     is_nullable: bool,
 }
 
+impl TermsEm {
+    pub fn terms(&self) -> &Terms { &self.terms }
+    pub fn is_nullable(&self) -> bool { self.is_nullable }
+}
+
 pub struct TermsEnd {
     terms: Terms,
     // I'm following the definition of FOLLOW(A) given in the GLL
@@ -86,6 +91,12 @@ pub struct TermsEnd {
     end_follows: bool,
 }
 
+impl TermsEnd {
+    pub fn terms(&self) -> &Terms { &self.terms }
+    pub fn is_nullable(&self) -> bool { self.is_nullable }
+    pub fn end_follows(&self) -> bool { self.end_follows }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Sym<Extra:Copy=()> {
     T(TermName),
@@ -95,6 +106,15 @@ pub enum Sym<Extra:Copy=()> {
     // this allows easy mapping of any occurrence to the context
     // where it occurred within the grammar.)
     N { name: NontermName, x: Extra },
+}
+
+impl<E:Copy> Sym<E> {
+    pub fn drop_x(&self) -> Sym<()> {
+        match *self {
+            Sym::T(t) => Sym::T(t),
+            Sym::N { name, .. } => Sym::N { name: name, x: () },
+        }
+    }
 }
 
 impl From<&'static str> for Sym<()> {
@@ -227,11 +247,7 @@ struct FollowContext<'a> {
 impl PreGrammar3 {
     fn identify_ll1s(self) -> PreGrammar4 {
         let PreGrammar3 {
-            rules: rules,
-            nullable: nullable,
-            firsts: firsts,
-            follows: follows,
-            end_follows: end_follows,
+            rules, nullable, firsts, follows, end_follows,
         } = self;
 
         let ll1s = {
@@ -254,7 +270,7 @@ impl PreGrammar3 {
     }
 }
 
-fn first(ctxt: FirstContext, alpha: &[Sym]) -> TermsEm {
+fn first<E:Copy>(ctxt: FirstContext, alpha: &[Sym<E>]) -> TermsEm {
     let FirstContext { nullable, firsts } = ctxt;
     let mut first = Terms::new();
     let mut broke_before_end = false;

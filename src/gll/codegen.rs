@@ -1,12 +1,12 @@
 use grammar::{Grammar, NontermName, Rule, Sym, TermName};
 
-pub trait Backend {
+pub trait Backend<'a> {
     type Command;
     type Expr;
     type Label: Clone;
     type Block;
 
-    fn new(g: &Grammar) -> Self;
+    fn new(g: &'a Grammar) -> Self;
 
     // (The label generators are all non `&mut self` because in
     // principle we should generate the labels ahead of time
@@ -92,12 +92,12 @@ pub trait Backend {
     fn pop(&mut self) -> Self::Command;
 }
 
-struct Codegen<'a, B:Backend+'a> {
+struct Codegen<'a, B:Backend<'a>+'a> {
     backend: &'a mut B,
     grammar: &'a Grammar,
 }
 
-impl<'a, C:Backend> Codegen<'a, C> {
+impl<'a, C:Backend<'a>> Codegen<'a, C> {
     // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
     fn on_term(&mut self, a: TermName) -> C::Command {
         let b = &mut self.backend;
@@ -114,9 +114,9 @@ impl<'a, C:Backend> Codegen<'a, C> {
     //      goto L_0
     //   }
     fn on_nonterm_instance<E:Copy>(&mut self,
-                          (a, k): (NontermName, usize),
-                          alpha: &[Sym<E>],
-                          x: NontermName) -> C::Command {
+                                   (a, k): (NontermName, usize),
+                                   alpha: &[Sym<E>],
+                                   x: NontermName) -> C::Command {
         let b = &mut self.backend;
         let matches = b.test(x, (Some(a), alpha));
         let r_a_k = b.return_label((a, k));
