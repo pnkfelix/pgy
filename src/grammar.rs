@@ -87,17 +87,22 @@ pub struct TermsEnd {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Sym {
+pub enum Sym<Extra:Copy=()> {
     T(TermName),
-    N(NontermName),
+
+    // Each occurrence of a non-terminal in a grammar is given a `num`
+    // that is unique relative to the whole grammar. (Effectively
+    // this allows easy mapping of any occurrence to the context
+    // where it occurred within the grammar.)
+    N { name: NontermName, x: Extra },
 }
 
-impl From<&'static str> for Sym {
-    fn from(name: &'static str) -> Sym { Sym::N(name) }
+impl From<&'static str> for Sym<()> {
+    fn from(name: &'static str) -> Sym<()> { Sym::N { name: name, x: () } }
 }
 
-impl From<char> for Sym {
-    fn from(name: char) -> Sym { Sym::T(name) }
+impl<E:Copy> From<char> for Sym<E> {
+    fn from(name: char) -> Sym<E> { Sym::T(name) }
 }
 
 pub enum TermEm {
@@ -111,9 +116,9 @@ pub enum TermEnd {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct Rule {
+pub struct Rule<E:Copy=()> {
     left: NontermName,
-    right_hands: Vec<Vec<Sym>>,
+    right_hands: Vec<Vec<Sym<E>>>,
 }
 
 macro_rules! rule {
@@ -129,20 +134,20 @@ pub type Nullable = HashSet<NontermName>;
 pub type Firsts = HashMap<NontermName, Terms>;
 pub type Follows = HashMap<NontermName, Terms>;
 
-struct PreGrammar0 { rules: Vec<Rule> }
-struct PreGrammar1 { rules: Vec<Rule>, nullable: Nullable }
-struct PreGrammar2 { rules: Vec<Rule>, nullable: Nullable, firsts: Firsts }
+struct PreGrammar0<E:Copy=()> { rules: Vec<Rule<E>> }
+struct PreGrammar1<E:Copy=()> { rules: Vec<Rule<E>>, nullable: Nullable }
+struct PreGrammar2<E:Copy=()> { rules: Vec<Rule<E>>, nullable: Nullable, firsts: Firsts }
 
-pub struct PreGrammar3 {
-    rules: Vec<Rule>,
+pub struct PreGrammar3<E:Copy=()> {
+    rules: Vec<Rule<E>>,
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
     end_follows: Nonterms
 }
 
-pub struct PreGrammar4 {
-    rules: Vec<Rule>,
+pub struct PreGrammar4<E:Copy=()> {
+    rules: Vec<Rule<E>>,
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
@@ -151,8 +156,8 @@ pub struct PreGrammar4 {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct Grammar {
-    rules: Vec<Rule>,
+pub struct Grammar<E:Copy=()> {
+    rules: Vec<Rule<E>>,
     nullable: Nullable,
     firsts: Firsts,
     follows: Follows,
@@ -160,7 +165,7 @@ pub struct Grammar {
     ll1s: Nonterms,
 }
 
-fn all_left_unique(rules: &[Rule]) -> bool {
+fn all_left_unique<E:Copy>(rules: &[Rule<E>]) -> bool {
     let mut lefts: Vec<_> = rules.iter().map(|r|r.left).collect();
     let old_len = lefts.len();
     lefts.sort();
@@ -258,7 +263,7 @@ fn first(ctxt: FirstContext, alpha: &[Sym]) -> TermsEm {
                 broke_before_end = true;
                 break;
             }
-            Sym::N(nonterm) => {
+            Sym::N { name: nonterm, .. } => {
                 for t in &firsts[nonterm] {
                     first.add_(*t);
                 }
@@ -360,7 +365,7 @@ fn identify_nullables(rules: &[Rule]) -> Nullable {
                 for s in right_hand {
                     match *s {
                         Sym::T(_) => continue 'rh,
-                        Sym::N(n) => if !nullable.contains(n) {
+                        Sym::N { name: n, .. } => if !nullable.contains(n) {
                             continue 'rh;
                         }
                     }
@@ -401,7 +406,7 @@ fn identify_firsts(rules: &[Rule], nullable: &Nullable) -> Firsts {
                             // done with this right-hand side.
                             continue 'rh;
                         }
-                        Sym::N(n) => {
+                        Sym::N { name: n, .. } => {
                             let n_first = firsts.get(n).unwrap_or_else(|| {
                                 panic!("nonterm {} with no rule", left);
                             });
@@ -466,7 +471,7 @@ fn identify_follows(rules: &[Rule],
                             }
                             prevs.clear();
                         }
-                        Sym::N(n) => {
+                        Sym::N { name:n, .. } => {
                             for t in &firsts[n] {
                                 for p in &prevs {
                                     follows.get_mut(p).unwrap().add(*t, &mut changed);
@@ -530,6 +535,44 @@ impl Grammar {
         let pg4 = pg3.identify_ll1s();
 
         pg4.finalize()
+    }
+}
+
+impl Rule<()> {
+    pub fn tag_nonterminals(self, ctrs: &mut HashMap<NontermName, usize>) -> Rule<usize> {
+        let Rule { left, right_hands } = self;
+        Rule {
+            left: left,
+            right_hands: right_hands.into_iter().map(|alt| {
+                alt.into_iter().map(|sym| match sym {
+                    Sym::T(t) => Sym::T(t),
+                    Sym::N { name: name, x: () } => {
+                        let ctr = ctrs.entry(name).or_insert(0);
+                        let n = Sym::N { name: name, x: *ctr };
+                        *ctr = *ctr + 1;
+                        n
+                    }
+                }).collect()
+            }).collect()
+        }
+    }
+}
+
+impl Grammar {
+    pub fn tag_nonterminals(self) -> Grammar<usize> {
+        let Grammar {
+            rules, nullable, firsts, follows, end_follows, ll1s
+        } = self;
+        let mut c = HashMap::with_capacity(firsts.len());
+        let new_rules = rules.into_iter().map(|r|r.tag_nonterminals(&mut c)).collect();
+        Grammar {
+            rules: new_rules,
+            nullable: nullable,
+            firsts: firsts,
+            follows: follows,
+            end_follows: end_follows,
+            ll1s: ll1s,
+        }
     }
 }
 
@@ -606,4 +649,25 @@ fn test_follow_t() {
 fn test_ll1_nonterms() {
     let g = demo_grammar();
     assert!(g.ll1s.same_contents(&vec!["A", "B"]));
+}
+
+#[test]
+fn test_ll1_tagging() {
+    let g = demo_grammar();
+    let g = g.tag_nonterminals();
+    assert_eq!(g.rules, vec![Rule {
+        left: "S",
+        right_hands: vec![vec![Sym::N { name: "A", x: 0 },
+                               Sym::N { name: "S", x: 0 },
+                               Sym::T('d')],
+                          vec![Sym::N { name: "B", x: 0 },
+                               Sym::N { name: "S", x: 1 }],
+                          vec![]], }, Rule {
+        left: "A",
+        right_hands: vec![vec![Sym::T('a')],
+                          vec![Sym::T('c')]], }, Rule {
+        left: "B",
+        right_hands: vec![vec![Sym::T('a')],
+                          vec![Sym::T('b')]], }
+                             ]);
 }
