@@ -153,6 +153,7 @@ pub struct Rule<E:Copy=()> {
     pub right_hands: Vec<Vec<Sym<E>>>,
 }
 
+#[macro_export]
 macro_rules! rule {
     ($l:ident ::= $( ( $($e:expr)* ));*) => {
         Rule {
