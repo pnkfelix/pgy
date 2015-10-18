@@ -3,5 +3,6 @@ name = "pgy"
 version = "0.1.0"
 authors = ["pnkfelix"]
 
-[dependencies]
-typed-arena = "1.0.1"
+[dependencies.pgy_runtime]
+git = "http://github.com/pnkfelix/pgy_runtime.git"
+# path = "/home/pnkfelix/Dev/Rust/pgy_runtime"
