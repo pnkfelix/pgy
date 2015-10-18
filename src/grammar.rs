@@ -7,9 +7,11 @@ pub type NontermName = &'static str;
 pub type Set<T> = Vec<T>;
 fn set<T>() -> Set<T> { vec![] }
 
-trait SetUpdate<T> {
+pub trait SetUpdate<T> {
     fn add(&mut self, t: T, changed: &mut bool);
     fn add_(&mut self, t: T);
+    fn union(&mut self, other: Set<T>, changed: &mut bool);
+    fn union_(&mut self, other: Set<T>);
 }
 
 impl<T:Eq> SetUpdate<T> for Set<T> {
@@ -23,6 +25,14 @@ impl<T:Eq> SetUpdate<T> for Set<T> {
         if !self.contains(&t) {
             self.push(t);
         }
+    }
+
+    fn union(&mut self, other: Set<T>, changed: &mut bool) {
+        for e in other { self.add(e, changed); }
+    }
+
+    fn union_(&mut self, other: Set<T>) {
+        for e in other { self.add_(e); }
     }
 }
 
@@ -75,6 +85,7 @@ pub struct TermsEm {
 
 impl TermsEm {
     pub fn terms(&self) -> &Terms { &self.terms }
+    pub fn into_terms(self) -> Terms { self.terms }
     pub fn is_nullable(&self) -> bool { self.is_nullable }
 }
 
@@ -93,6 +104,7 @@ pub struct TermsEnd {
 
 impl TermsEnd {
     pub fn terms(&self) -> &Terms { &self.terms }
+    pub fn into_terms(self) -> Terms { self.terms }
     pub fn is_nullable(&self) -> bool { self.is_nullable }
     pub fn end_follows(&self) -> bool { self.end_follows }
 }
