@@ -96,23 +96,22 @@ impl RenderIndent for Block {
     }
 }
 
-pub struct RustBackend(Grammar<usize>);
+pub struct RustBackend<'a>(&'a Grammar<usize>);
 
-impl RustBackend {
+impl<'a> RustBackend<'a> {
     pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
-    pub fn new(g: &Grammar<usize>) -> RustBackend {
-        // FIXME: should not need to clone its own copy of the grammar
-        RustBackend(g.clone())
+    pub fn new(g: &'a Grammar<usize>) -> RustBackend {
+        RustBackend(g)
     }
 }
 
-impl BackendText for RustBackend {
+impl<'a> BackendText for RustBackend<'a> {
     fn prefix(&self) -> String { prefix(self) }
     fn suffix(&self) -> String { suffix(self) }
     fn rule_indent_preference(&self) -> usize { "            ".len() }
 }
 
-impl Backend for RustBackend {
+impl<'a> Backend for RustBackend<'a> {
     type Command = Command;
     type Expr = Expr;
     type Label = Label;
