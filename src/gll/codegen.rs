@@ -63,68 +63,68 @@ pub trait Backend {
 
     // `L: C`
     // (note that `C` must have control flow ending in goto...)
-    fn block(&mut self, l: Self::Label, c: Self::Command) -> Self::Block;
+    fn block(&self, l: Self::Label, c: Self::Command) -> Self::Block;
 
     // Execute this command to report the parse attempt failed.
-    fn report_parse_failure(&mut self, &str) -> Self::Command;
+    fn report_parse_failure(&self, &str) -> Self::Command;
 
     // Execute this command if something unexpected happened
     // in the generated code.
-    fn panic_fail(&mut self, &str) -> Self::Command;
+    fn panic_fail(&self, &str) -> Self::Command;
 
     // the no-op command makes some constructions easier.
-    fn no_op(&mut self) -> Self::Command;
+    fn no_op(&self) -> Self::Command;
 
     // `cmd1, cmd2`
-    fn seq(&mut self,
+    fn seq(&self,
            cmd1: Self::Command,
            cmd2: Self::Command) -> Self::Command;
 
     // `if test { then }
-    fn if_(&mut self,
+    fn if_(&self,
            test: Self::Expr,
            then: Self::Command) -> Self::Command;
 
     // `if test { then } else { else_ }`
-    fn if_else(&mut self,
+    fn if_else(&self,
                test: Self::Expr,
                then: Self::Command,
                else_: Self::Command) -> Self::Command;
 
     // `j := j + 1`
-    fn increment_curr(&mut self) -> Self::Command;
+    fn increment_curr(&self) -> Self::Command;
 
     // let L = label;
     // `goto L`
-    fn goto(&mut self, label: Self::Label) -> Self::Command;
+    fn goto(&self, label: Self::Label) -> Self::Command;
 
     // this comes up a lot.
-    fn goto_l0(&mut self) -> Self::Command {
+    fn goto_l0(&self) -> Self::Command {
         let l0 = self.label_0();
         self.goto(l0)
     }
 
     // `I[j] == a`
-    fn curr_matches_term(&mut self, a: TermName) -> Self::Expr;
+    fn curr_matches_term(&self, a: TermName) -> Self::Expr;
 
     // let x = I[j]; let α = alpha;
     // `x in FIRST(α) or empty in FIRST(α) and x in FOLLOW(A)`
     //
     // The leading optional component in alpha is meant to be
     // the first element of alpha, if it is present at all.
-    fn test<E:Copy>(&mut self,
+    fn test<E:Copy>(&self,
                     a: NontermName,
                     alpha: (Option<NontermName>, &[Sym<E>])) -> Self::Expr;
 
     // `c_u := create(l, c_u, j)`
-    fn create(&mut self,
+    fn create(&self,
               l: Self::Label) -> Self::Command;
 
     // `add(l, c_u, j)
-    fn add(&mut self, l: Self::Label) -> Self::Command;
+    fn add(&self, l: Self::Label) -> Self::Command;
 
     // `pop(c_u, j)`
-    fn pop(&mut self) -> Self::Command;
+    fn pop(&self) -> Self::Command;
 }
 
 pub struct Codegen<'a, B:Backend+'a> {
@@ -139,8 +139,8 @@ impl<'a, C:Backend> Codegen<'a, C> {
     pub fn grammar(&self) -> &Grammar<usize> { self.grammar }
 
     // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
-    pub fn on_term(&mut self, a: TermName) -> C::Command {
-        let b = &mut self.backend;
+    pub fn on_term(&self, a: TermName) -> C::Command {
+        let b = &self.backend;
         let matches = b.curr_matches_term(a);
         let next_j = b.increment_curr();
         let goto_l0 = b.goto_l0();
@@ -153,11 +153,11 @@ impl<'a, C:Backend> Codegen<'a, C> {
     //   } else {
     //      goto L_0
     //   }
-    pub fn on_nonterm_instance<E:Copy>(&mut self,
+    pub fn on_nonterm_instance<E:Copy>(&self,
                                    (a, k): (NontermName, usize),
                                    alpha: &[Sym<E>],
                                    x: NontermName) -> C::Command {
-        let b = &mut self.backend;
+        let b = &self.backend;
         let matches = b.test(x, (Some(a), alpha));
         let r_a_k = b.return_label((a, k));
         let create = b.create(r_a_k);
@@ -171,9 +171,9 @@ impl<'a, C:Backend> Codegen<'a, C> {
     // code(α, j, X) = ...
     //
     // (driver for calling either of on_term/on_nonterm_instance)
-    pub fn on_symbols(&mut self,
-                          alpha: &[Sym<usize>],
-                          x: NontermName) -> C::Command {
+    pub fn on_symbols(&self,
+                      alpha: &[Sym<usize>],
+                      x: NontermName) -> C::Command {
         assert!(alpha.len() > 0);
         let (s_0, alpha) = alpha.split_at(1);
         match s_0[0] {
@@ -190,7 +190,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
     //   code(   x2 .. x_f, j, A)
     //   ...
     //   code(         x_f, j, A)
-    pub fn on_symbols_in_prod(&mut self,
+    pub fn on_symbols_in_prod(&self,
                               alpha: &[Sym<usize>],
                               a: NontermName) -> C::Command {
         let mut c = self.backend.no_op();
@@ -222,10 +222,10 @@ impl<'a, C:Backend> Codegen<'a, C> {
     //          pop(c_u, j)
     //          goto L_0
 
-    pub fn on_production(&mut self,
-                     a: NontermName,
-                     alpha: &[Sym<usize>]) -> (C::Command,
-                                               Option<C::Block>) {
+    pub fn on_production(&self,
+                         a: NontermName,
+                         alpha: &[Sym<usize>]) -> (C::Command,
+                                                   Option<C::Block>) {
         if alpha.len() == 0 {
             return (self.backend.pop(), None);
         }
@@ -238,7 +238,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
 
                 let next_j = self.backend.increment_curr();
                 let mut c = self.on_symbols_in_prod(&alpha[1..], a);
-                let b = &mut self.backend;
+                let b = &self.backend;
                 let mut c = b.seq(next_j, c);
                 let pop = b.pop();
                 c = b.seq(c, pop);
@@ -249,7 +249,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
             Sym::N { name: X, x: l } => {
                 let r_X_l = self.backend.return_label((X, l));
                 let c1 = {
-                    let b = &mut self.backend;
+                    let b = &self.backend;
                     let l_X = b.nonterm_label(X);
                     let create = b.create(r_X_l.clone());
                     let goto_lX = b.goto(l_X);
@@ -257,7 +257,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
                 };
 
                 let mut c2 = self.on_symbols_in_prod(&alpha[1..], a);
-                let b = &mut self.backend;
+                let b = &self.backend;
                 let pop = b.pop();
                 c2 = b.seq(c2, pop);
                 let goto_l0 = b.goto_l0();
@@ -288,12 +288,12 @@ impl<'a, C:Backend> Codegen<'a, C> {
     // ...
     // L_A_t: code(A ::= α_t, j)
     //
-    pub fn on_rule(&mut self,
-               r: Rule<usize>) -> (C::Command,
-                                   Vec<C::Block>) {
+    pub fn on_rule(&self,
+                   r: Rule<usize>) -> (C::Command,
+                                       Vec<C::Block>) {
         let Rule { left: a, right_hands: ref alphas } = r;
         let c = if self.grammar().ll1s.contains(&a) {
-            let b = &mut self.backend;
+            let b = &self.backend;
             let mut c = b.no_op();
             for (i, alpha) in alphas.iter().enumerate() {
                 let test = b.test(a, (None, alpha));
@@ -306,7 +306,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
             c = b.seq(c, u);
             c
         } else {
-            let b = &mut self.backend;
+            let b = &self.backend;
             let mut c = b.no_op();
             for (i, alpha) in alphas.iter().enumerate() {
                 let test = b.test(a, (None, alpha));
@@ -326,7 +326,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
         let mut blocks = Vec::with_capacity(2*alphas.len());
         for (i, alpha) in alphas.iter().enumerate() {
             let (c, opt_b) = self.on_production(a, alpha);
-            let b = &mut self.backend;
+            let b = &self.backend;
             let l_a_i = b.alternate_label((a, i));
             let block = b.block(l_a_i, c);
             blocks.push(block);

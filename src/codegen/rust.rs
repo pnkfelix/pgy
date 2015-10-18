@@ -140,28 +140,28 @@ impl Backend for RustBackend {
 
     // `L: C`
     // (note that `C` must have control flow ending in goto...)
-    fn block(&mut self, l: Self::Label, c: Self::Command) -> Self::Block {
+    fn block(&self, l: Self::Label, c: Self::Command) -> Self::Block {
         Block(l, c)
     }
 
     // Execute this command to report the parse attempt failed.
-    fn report_parse_failure(&mut self, msg: &str) -> Self::Command {
+    fn report_parse_failure(&self, msg: &str) -> Self::Command {
         Command::One(format!("return Err(\"{}\");", msg))
     }
 
     // Execute this command if something unexpected happened
     // in the generated code.
-    fn panic_fail(&mut self, msg: &str) -> Self::Command {
+    fn panic_fail(&self, msg: &str) -> Self::Command {
         Command::One(format!("panic!(\"{}\");", msg))
     }
 
     // the no-op command makes some constructions easier.
-    fn no_op(&mut self) -> Self::Command {
+    fn no_op(&self) -> Self::Command {
         Command::Seq(vec![])
     }
 
     // `cmd1, cmd2`
-    fn seq(&mut self,
+    fn seq(&self,
            cmd1: Self::Command,
            cmd2: Self::Command) -> Self::Command {
         Command::Seq(cmd1.seq()
@@ -169,14 +169,14 @@ impl Backend for RustBackend {
     }
 
     // `if test { then }
-    fn if_(&mut self,
+    fn if_(&self,
            test: Self::Expr,
            then: Self::Command) -> Self::Command {
         Command::If(test, Box::new(then))
     }
 
     // `if test { then } else { else_ }`
-    fn if_else(&mut self,
+    fn if_else(&self,
                test: Self::Expr,
                then: Self::Command,
                else_: Self::Command) -> Self::Command {
@@ -184,18 +184,18 @@ impl Backend for RustBackend {
     }
 
     // `j := j + 1`
-    fn increment_curr(&mut self) -> Self::Command {
+    fn increment_curr(&self) -> Self::Command {
         Command::One("self.i.incr();".into())
     }
 
     // let L = label;
     // `goto L`
-    fn goto(&mut self, label: Self::Label) -> Self::Command {
+    fn goto(&self, label: Self::Label) -> Self::Command {
         Command::One(format!("goto!( {} )", label.render_use()))
     }
 
     // `I[j] == a`
-    fn curr_matches_term(&mut self, a: TermName) -> Self::Expr {
+    fn curr_matches_term(&self, a: TermName) -> Self::Expr {
         Expr(format!("self.i_in(&['{}'])", a))
     }
 
@@ -205,7 +205,7 @@ impl Backend for RustBackend {
     // The leading optional component in alpha is meant to be
     // the first element of alpha, if it is present at all.
     fn test<E:Copy>(
-        &mut self,
+        &self,
         a: NontermName,
         alpha: (Option<NontermName>, &[Sym<E>])) -> Self::Expr {
 
@@ -255,18 +255,18 @@ impl Backend for RustBackend {
     }
 
     // `c_u := create(l, c_u, j)`
-    fn create(&mut self,
+    fn create(&self,
               l: Self::Label) -> Self::Command {
         Command::One(format!("self.create({});", l.render_use()))
     }
 
     // `add(l, c_u, j)
-    fn add(&mut self, l: Self::Label) -> Self::Command {
+    fn add(&self, l: Self::Label) -> Self::Command {
         Command::One(format!("self.add_s({});", l.render_use()))
     }
 
     // `pop(c_u, j)`
-    fn pop(&mut self) -> Self::Command {
+    fn pop(&self) -> Self::Command {
         Command::One(format!("self.pop();"))
     }
 }
