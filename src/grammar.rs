@@ -307,6 +307,7 @@ fn first<E:Copy>(ctxt: FirstContext, alpha: &[Sym<E>]) -> TermsEm {
 fn identify_ll1s(rules: &[Rule],
                  fic: FirstContext,
                  foc: FollowContext) -> Nonterms {
+    #![allow(non_snake_case)] // allow idiosyncratic `A` variable below
     let mut nonterms: Nonterms = set();
 
     // this is already asserted by `Grammar::new`, so a debug_assert
@@ -564,7 +565,7 @@ impl Rule<()> {
             right_hands: right_hands.into_iter().map(|alt| {
                 alt.into_iter().map(|sym| match sym {
                     Sym::T(t) => Sym::T(t),
-                    Sym::N { name: name, x: () } => {
+                    Sym::N { name, x: () } => {
                         let ctr = ctrs.entry(name).or_insert(0);
                         let n = Sym::N { name: name, x: *ctr };
                         *ctr = *ctr + 1;
@@ -626,6 +627,26 @@ impl<E:Copy> Grammar<E> {
             is_nullable: self.nullable.contains(a),
             end_follows: self.end_follows.contains(&a),
         }
+    }
+}
+
+#[cfg(test)]
+pub mod tiny_grammar {
+    use super::*;
+    pub fn a() -> Grammar {
+        Grammar::new(vec![rule!(S ::= ('a'))])
+    }
+
+    pub fn ab() -> Grammar {
+        Grammar::new(vec![rule!(S ::= ('a' 'b'))])
+    }
+
+    pub fn a_or_b() -> Grammar {
+        Grammar::new(vec![rule!(S ::= ('a'); ('b'))])
+    }
+
+    pub fn a_star() -> Grammar {
+        Grammar::new(vec![rule!(S ::= ('a' "S"); ())])
     }
 }
 
