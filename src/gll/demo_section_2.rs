@@ -1,4 +1,4 @@
-// S ::= A S d | B S
+// S ::= A S d | B S | empty
 // A ::= a | c
 // B ::= a | b
 
@@ -39,7 +39,7 @@ fn demo_3() {
     demo("bbcacddd").unwrap();
 }
 
-#[cfg(ignored)] // this one, exercising the first alt of B, doesn't work yet.
+#[cfg(ignored)] // this one, exercising the first alt of B, doesn't work (as of section 2)
 #[test]
 fn demo_4() {
     demo("a").unwrap();

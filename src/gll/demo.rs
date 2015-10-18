@@ -1,6 +1,6 @@
 #![allow(non_camel_case_types)]
 
-// S ::= A S d | B S
+// S ::= A S d | B S | \empty
 // A ::= a | c
 // B ::= a | b
 
@@ -357,6 +357,8 @@ impl<'i, 'g> Context<'i, 'g> {
     }
 
     fn add(&mut self, l: Label, u: Stack<'g>, j: InputPos) {
+        // N.B. two U_j and R are combined into one (they are separate
+        // in the paper); only one operation is needed here.
         self.r.add(Desc(l, u, j));
     }
 
@@ -381,19 +383,15 @@ impl<'i, 'g> Context<'i, 'g> {
         }
 
         // The following is a loop for processing the grammar
-        //   S ::= A S d | B S | empty
+        //   S ::= A S d | B S | \empty
         //   A ::= a | c
         //   B ::= a | b
 
         loop {
             pc = match pc {
-                L::S => {
-                    if self.i_in(&['a', 'c']) { self.add_s(L::S_1); }
-                    if self.i_in(&['a', 'b']) { self.add_s(L::S_2); }
-                    if self.i_in_end(&['d']) { self.add_s(L::S_3); }
-                    L::_0
-                }
 
+                // This is kernel of the loop, but it is *not* where
+                // we start (note that `pc` is set to `L::S` above).
                 L::_0 => {
                     match self.r.pop() {
                         Some(Desc(L, u, j)) => {
@@ -413,6 +411,17 @@ impl<'i, 'g> Context<'i, 'g> {
                         }
                     }
                 }
+
+                L::S => { // S ::= A S d | B S | \empty
+                    // FIRST(A) = {a,c}
+                    if self.i_in(&['a', 'c']) { self.add_s(L::S_1); }
+                    // FIRST(B) = {a,b}
+                    if self.i_in(&['a', 'b']) { self.add_s(L::S_2); }
+                    // FIRST(\empty) = {\empty}; FOLLOW(S) = {d, $}
+                    if self.i_in_end(&['d']) { self.add_s(L::S_3); }
+                    goto!( L::_0 );
+                }
+
                 L::S_1 => { self.create(L::_1); goto!( L::A ); }
 
                 L::_1 => { self.create(L::_2); goto!( L::S ); }
@@ -436,6 +445,7 @@ impl<'i, 'g> Context<'i, 'g> {
                 L::A => {
                     if self.i_in(&['a']) {
                         self.i.incr();
+
                         self.pop();
                         goto!( L::_0 );
                     } else {
@@ -449,6 +459,7 @@ impl<'i, 'g> Context<'i, 'g> {
                 L::B => {
                     if self.i_in(&['a']) {
                         self.i.incr();
+
                         self.pop();
                         goto!( L::_0 );
                     } else {
