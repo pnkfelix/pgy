@@ -2,6 +2,7 @@ use gll::codegen::Backend;
 use grammar::{Grammar, NontermName, TermName, Sym};
 
 use std::borrow::Cow;
+use std::iter;
 use std::mem;
 
 #[derive(Debug)]
@@ -12,23 +13,33 @@ pub enum Command {
     IfElse(Expr, Box<Command>, Box<Command>)
 }
 
+fn make_indent(i: usize) -> String { iter::repeat(' ').take(i).collect() }
+
 impl Command {
-    pub fn render(&self) -> String {
+    pub fn render_indent(&self, i: usize) -> String {
+        let indent = || make_indent(i);
         match *self {
-            Command::One(ref s) => s.clone(),
+            Command::One(ref s) => indent() + s + "\n",
             Command::Seq(ref cmds) => cmds.iter()
-                .map(|cmd| cmd.render() + "\n")
+                .map(|cmd| cmd.render_indent(i))
                 .collect(),
             Command::If(ref e, ref t) =>
-                format!("if {} {{\n {} \n}}",
-                        e.0,
-                        t.render()),
+                format!("{}if {} {{\n{}{}}}\n",
+                        indent(), e.0,
+                        t.render_indent(i + 4),
+                        indent()),
             Command::IfElse(ref e, ref tn, ref el) =>
-                format!("if {} {{\n {} \n}} else {{\n {} \n}}",
-                        e.0,
-                        tn.render(),
-                        el.render()),
+                format!("{}if {} {{\n{}{}}} else {{\n{}{}}}\n",
+                        indent(), e.0,
+                        tn.render_indent(i + 4),
+                        indent(),
+                        el.render_indent(i + 4),
+                        indent()),
         }
+    }
+
+    pub fn render(&self) -> String {
+        self.render_indent(0)
     }
 }
 
@@ -72,8 +83,14 @@ pub struct Label(Cow<'static, str>);
 pub struct Block(Label, Command);
 
 impl Block {
+    pub fn render_indent(&self, i: usize) -> String {
+        let indent = || make_indent(i);
+        format!("{}{} => {{\n{}{}}}\n", indent(), (self.0).0,
+                self.1.render_indent(i+4),
+                indent())
+    }
     pub fn render(&self) -> String {
-        format!("{} => {{\n {} \n}}", (self.0).0, self.1.render())
+        self.render_indent(0)
     }
 }
 
@@ -113,13 +130,13 @@ impl<'a> Backend<'a> for RustBackend<'a> {
 
     // Execute this command to report the parse attempt failed.
     fn report_parse_failure(&mut self, msg: &str) -> Self::Command {
-        Command::One(format!("return Err(({});", msg))
+        Command::One(format!("return Err(\"{}\");", msg))
     }
 
     // Execute this command if something unexpected happened
     // in the generated code.
     fn panic_fail(&mut self, msg: &str) -> Self::Command {
-        Command::One(format!("panic!({})", msg))
+        Command::One(format!("panic!(\"{}\");", msg))
     }
 
     // the no-op command makes some constructions easier.
@@ -140,7 +157,6 @@ impl<'a> Backend<'a> for RustBackend<'a> {
            test: Self::Expr,
            then: Self::Command) -> Self::Command {
         Command::If(test, Box::new(then))
-        
     }
 
     // `if test { then } else { else_ }`
@@ -232,11 +248,11 @@ impl<'a> Backend<'a> for RustBackend<'a> {
 
     // `add(l, c_u, j)
     fn add(&mut self, l: Self::Label) -> Self::Command {
-        Command::One(format!("self.add_s({})", l.0))
+        Command::One(format!("self.add_s({});", l.0))
     }
 
     // `pop(c_u, j)`
     fn pop(&mut self) -> Self::Command {
-        Command::One(format!("self.pop()"))
+        Command::One(format!("self.pop();"))
     }
 }
