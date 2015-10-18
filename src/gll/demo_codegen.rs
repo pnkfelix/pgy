@@ -16,19 +16,22 @@ fn demo_1() {
         println!("");
         let g = g.tag_nonterminals();
         let mut rb: RustBackend = Backend::new(&g);
+        print!("{}", rb.prefix());
+        let indent = rb.rule_indent_preference();
+        let suffix = rb.suffix();
         let mut cg = Codegen { backend: &mut rb, grammar: &g };
-        for (i, rule) in g.rules.iter().enumerate() {
+        for rule in &g.rules {
             // FIXME: make `fn on_rule` take a `&Rule` instead of cloning.
             let (c, blocks) = cg.on_rule(rule.clone());
             let l_a = cg.backend.nonterm_label(rule.left);
             let b = cg.backend.block(l_a, c);
-            let prefix = format!("i={}: ", i);
-            println!("{}{}", prefix, b.render());
+            print!("{}", b.render_indent(indent));
             let blocks: String = blocks.iter()
-                .map(|b|b.render() + "\n")
+                .map(|b|b.render_indent(indent))
                 .collect();
-            println!("{}", blocks);
+            print!("{}", blocks);
         }
+        println!("{}", suffix);
     }
 
     // (uncomment to show the output above)

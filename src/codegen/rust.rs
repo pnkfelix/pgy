@@ -1,5 +1,5 @@
 use gll::codegen::Backend;
-use grammar::{Grammar, NontermName, TermName, SetUpdate, Sym};
+use grammar::{Grammar, NontermName, Rule, SetUpdate, Sym, TermName};
 
 use std::borrow::Cow;
 use std::iter;
@@ -78,14 +78,22 @@ impl Iterator for CommandSeq {
 pub struct Expr(String);
 
 #[derive(Clone, Debug)]
-pub struct Label(Cow<'static, str>);
+pub struct Label { name: Cow<'static, str> }
+
+pub fn Label<N:Into<Cow<'static, str>>>(name: N) -> Label { Label { name: name.into() } }
+
+impl Label {
+    fn render_use(&self) -> String { format!("L::{}", self.name) }
+    fn render_def(&self) -> String { format!("{}", self.name) }
+}
+
 #[derive(Debug)]
 pub struct Block(Label, Command);
 
 impl Block {
     pub fn render_indent(&self, i: usize) -> String {
         let indent = || make_indent(i);
-        format!("{}{} => {{\n{}{}}}\n", indent(), (self.0).0,
+        format!("{}{} => {{\n{}{}}}\n", indent(), (self.0).render_use(),
                 self.1.render_indent(i+4),
                 indent())
     }
@@ -96,6 +104,13 @@ impl Block {
 
 pub struct RustBackend<'a>(&'a Grammar<usize>);
 
+impl<'a> RustBackend<'a> {
+    pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
+    pub fn prefix(&self) -> String { prefix(self) }
+    pub fn suffix(&self) -> String { suffix(self) }
+    pub fn rule_indent_preference(&self) -> usize { "            ".len() }
+}
+
 impl<'a> Backend<'a> for RustBackend<'a> {
     type Command = Command;
     type Expr = Expr;
@@ -104,22 +119,22 @@ impl<'a> Backend<'a> for RustBackend<'a> {
 
     fn new(g: &'a Grammar<usize>) -> Self { RustBackend(g) }
 
-    fn label_0(&self) -> Label { Label("L::_0".into()) }
+    fn label_0(&self) -> Label { Label("_0") }
 
     // R_A_k labels function call return lines.
     fn return_label(&self, (a, k): (NontermName, usize)) -> Self::Label {
-        Label(format!("L::R_{}_{}", a, k+1).into())
+        Label(format!("R_{}_{}", a, k+1))
     }
 
     // L_A labels parse function for A.
     fn nonterm_label(&self, a: NontermName) -> Self::Label {
-        Label(format!("L::L_{}", a).into())
+        Label(format!("L_{}", a))
     }
 
     // L_A_i labels function for parsing ith alternate α_i of A.
     fn alternate_label(&self,
                        (a, i): (NontermName, usize)) -> Self::Label {
-        Label(format!("L::A_{}_{}", a, i+1).into())
+        Label(format!("A_{}_{}", a, i+1))
     }
 
     // `L: C`
@@ -175,7 +190,7 @@ impl<'a> Backend<'a> for RustBackend<'a> {
     // let L = label;
     // `goto L`
     fn goto(&mut self, label: Self::Label) -> Self::Command {
-        Command::One(format!("goto!( {} )", label.0))
+        Command::One(format!("goto!( {} )", label.render_use()))
     }
 
     // `I[j] == a`
@@ -241,16 +256,121 @@ impl<'a> Backend<'a> for RustBackend<'a> {
     // `c_u := create(l, c_u, j)`
     fn create(&mut self,
               l: Self::Label) -> Self::Command {
-        Command::One(format!("self.create({});", l.0))
+        Command::One(format!("self.create({});", l.render_use()))
     }
 
     // `add(l, c_u, j)
     fn add(&mut self, l: Self::Label) -> Self::Command {
-        Command::One(format!("self.add_s({});", l.0))
+        Command::One(format!("self.add_s({});", l.render_use()))
     }
 
     // `pop(c_u, j)`
     fn pop(&mut self) -> Self::Command {
         Command::One(format!("self.pop();"))
     }
+}
+
+fn all_labels(rb: &RustBackend) -> Vec<Label> {
+    let mut labels = Vec::new();
+    for &Rule { left, ref right_hands } in &rb.0.rules {
+        labels.push(rb.nonterm_label(left));
+        for (i, alt) in right_hands.iter().enumerate() {
+            labels.push(rb.alternate_label((left, i)));
+            for sym in alt {
+                if let &Sym::N { name, x } = sym {
+                    labels.push(rb.return_label((name, x)));
+                }
+            }
+        }
+    }
+    labels
+}
+
+const DB_MACRO_DEFINITION: &'static str = r#"
+macro_rules! db {
+    ($($tt:expr),*) => {
+        // println!($($tt),*)
+    }
+}"#;
+
+const GOTO_MACRO_DEFINITION: &'static str = r#"
+    macro_rules! goto {
+        ($l:expr) => {
+            {{ db!("goto {:?} to {:?}", pc, $l);
+              pc = $l;
+              continue;
+            }
+        }
+    }
+"#;
+
+const L0_ARM: &'static str = r#"
+            // This is kernel of the loop, but it is *not* where
+            // we start (note that `pc` is set to `L::L_S` for some `S` above).
+            L::_0 => {
+                match self.r.pop() {
+                    Some(Desc(L, u, j)) => {
+                        self.s = u;
+                        self.i = j;
+                        goto!( L );
+                    }
+                    None => {
+                        if self.r.seen.contains(
+                            &Desc(L::_0,
+                                  Stack(self.g.dummy),
+                                  InputPos(self.I.len()))) {
+                            return Ok(Success);
+                        } else {
+                            return Err(ParseError);
+                        }
+                    }
+                }
+            }
+"#;
+
+fn prefix(rb: &RustBackend) -> String {
+    let labels: String = rb.all_labels().into_iter()
+        .map(|label| format!("    {},\n", label.render_def()))
+        .collect();
+    let names_to_labels: String = rb.all_labels().into_iter()
+        .map(|label| format!("            {} => Some({}),\n", label.name, label.render_use()))
+        .collect();
+    format!(r###"
+#[derive(Debug)]
+enum Label {{
+{labels}
+}}
+
+impl Label {{
+    fn from_name(name: &str) -> Option<Label> {{
+        use self::Label as L;
+        match name {{
+{names_to_labels}
+            _ => None,
+        }}
+    }}
+}}
+{db_macro_definition}
+fn parse<C:Context>(&C, start_name: &str) -> Result<C::Success, C::ParseError> {{
+    use self::Label as L;
+    let mut pc = self::Label::from_name(format!("L_{{}}", start_name)).unwrap();
+    {goto_macro_definition}
+    loop {{
+        pc = match pc {{
+            {l0_arm}
+"###,
+            labels=labels,
+            names_to_labels=names_to_labels,
+            db_macro_definition = DB_MACRO_DEFINITION,
+            goto_macro_definition = GOTO_MACRO_DEFINITION,
+            l0_arm = L0_ARM,
+            )
+}
+
+fn suffix(rb: &RustBackend) -> String {
+    format!(r###"        }}
+    }}
+}}
+"###,
+            )
 }
