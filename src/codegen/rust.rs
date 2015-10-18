@@ -1,5 +1,5 @@
 use gll::codegen::Backend;
-use grammar::{Grammar, NontermName, TermName, Sym};
+use grammar::{Grammar, NontermName, TermName, SetUpdate, Sym};
 
 use std::borrow::Cow;
 use std::iter;
@@ -205,22 +205,24 @@ impl<'a> Backend<'a> for RustBackend<'a> {
         alpha.extend(rest.iter().map(|s| s.drop_x()));
 
         let first = self.0.first(&alpha);
-        let first_terms: String = first.terms().iter()
-            .map(|t| format!("'{}',", t)).collect();
         if first.is_nullable() {
             let follow = self.0.follow(a);
-            let follow_terms: String = follow.terms().iter()
-                .map(|t|format!("'{}',", t)).collect();
 
-            // FIXME: should first do set-union between first_terms
-            // and follow_terms on this branch, avoiding potential
-            // duplication of effort below.
+            let follow_pred =
+                if follow.end_follows() { "self.i_in_end" } else { "self.i_in" };
 
-            // FIXME: In addition to the other peephole optimizations
-            // (mentioned above or implemented below), we might also
-            // special-case when the set of terms *is* the universe of
-            // terminals, and just let that produce the expression
-            // `true` in that scenario.
+            // This seems like any grammar would have to obey this rule,
+            // (*unless* it has unused non-terminals...).
+            assert!(follow.end_follows() || follow.terms().len() > 0);
+
+            let mut terms = first.into_terms();
+            terms.union_(follow.into_terms());
+            let all_terms: String = terms.iter()
+                .map(|t| format!("'{}',", t)).collect();
+
+            // FIXME: we might special-case when the set of terms *is*
+            // the universe of terminals, and just let that produce
+            // the expression `true` in that scenario.
             //
             // (Though in truth, it might be nice to bubble such
             // an observation up to the higher level code generator,
@@ -228,14 +230,10 @@ impl<'a> Backend<'a> for RustBackend<'a> {
             // being generated that we could just skip based on the
             // observation.)
 
-            if first_terms.len() > 0 {
-                Expr(format!("(self.i_in(&[{}]) || self.i_in(&[{}]))",
-                             first_terms, follow_terms))
-            } else {
-                Expr(format!("(self.i_in(&[{}]))",
-                             follow_terms))
-            }
+            Expr(format!("{}(&[{}])", follow_pred, all_terms))
         } else {
+            let first_terms: String = first.terms().iter()
+                .map(|t| format!("'{}',", t)).collect();
             Expr(format!("self.i_in(&[{}])", first_terms))
         }
     }
