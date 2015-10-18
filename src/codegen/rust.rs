@@ -96,7 +96,7 @@ impl RenderIndent for Block {
     }
 }
 
-pub struct RustBackend<'a>(&'a Grammar<usize>);
+pub struct RustBackend<'a>(pub &'a Grammar<usize>);
 
 impl<'a> RustBackend<'a> {
     pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
@@ -110,6 +110,8 @@ impl<'a> BackendText for RustBackend<'a> {
     fn suffix(&self) -> String { suffix(self) }
     fn rule_indent_preference(&self) -> usize { "            ".len() }
 }
+
+const CONTEXT: &'static str = "context";
 
 impl<'a> Backend for RustBackend<'a> {
     type Command = Command;
@@ -184,7 +186,7 @@ impl<'a> Backend for RustBackend<'a> {
 
     // `j := j + 1`
     fn increment_curr(&self) -> Self::Command {
-        Command::One("self.i.incr();".into())
+        Command::One(format!("{}.i_incr();", CONTEXT).into())
     }
 
     // let L = label;
@@ -195,7 +197,7 @@ impl<'a> Backend for RustBackend<'a> {
 
     // `I[j] == a`
     fn curr_matches_term(&self, a: TermName) -> Self::Expr {
-        Expr(format!("self.i_in(&['{}'])", a))
+        Expr(format!("{}.i_in(&[C::Term::from_char('{}')])", CONTEXT, a))
     }
 
     // let x = I[j]; let α = alpha;
@@ -223,8 +225,11 @@ impl<'a> Backend for RustBackend<'a> {
         if first.is_nullable() {
             let follow = self.0.follow(a);
 
-            let follow_pred =
-                if follow.end_follows() { "self.i_in_end" } else { "self.i_in" };
+            let follow_pred = if follow.end_follows() {
+                format!("{}.i_in_end", CONTEXT)
+            } else {
+                format!("{}.i_in", CONTEXT)
+            };
 
             // This seems like any grammar would have to obey this rule,
             // (*unless* it has unused non-terminals...).
@@ -248,30 +253,30 @@ impl<'a> Backend for RustBackend<'a> {
             Expr(format!("{}(&[{}])", follow_pred, all_terms))
         } else {
             let first_terms: String = first.terms().iter()
-                .map(|t| format!("'{}',", t)).collect();
-            Expr(format!("self.i_in(&[{}])", first_terms))
+                .map(|t| format!("C::Term::from_char('{}'),", t)).collect();
+            Expr(format!("{}.i_in(&[{}])", CONTEXT, first_terms))
         }
     }
 
     // `c_u := create(l, c_u, j)`
     fn create(&self,
               l: Self::Label) -> Self::Command {
-        Command::One(format!("self.create({});", l.render_use()))
+        Command::One(format!("{}.create({});", CONTEXT, l.render_use()))
     }
 
     // `add(l, c_u, j)
     fn add(&self, l: Self::Label) -> Self::Command {
-        Command::One(format!("self.add_s({});", l.render_use()))
+        Command::One(format!("{}.add_s({});", CONTEXT, l.render_use()))
     }
 
     // `pop(c_u, j)`
     fn pop(&self) -> Self::Command {
-        Command::One(format!("self.pop();"))
+        Command::One(format!("{}.pop();", CONTEXT))
     }
 }
 
 fn all_labels(rb: &RustBackend) -> Vec<Label> {
-    let mut labels = Vec::new();
+    let mut labels = vec![Label("_0")];
     for &Rule { left, ref right_hands } in &rb.0.rules {
         labels.push(rb.nonterm_label(left));
         for (i, alt) in right_hands.iter().enumerate() {
@@ -296,7 +301,7 @@ macro_rules! db {
 const GOTO_MACRO_DEFINITION: &'static str = r#"
     macro_rules! goto {
         ($l:expr) => {
-            {{ db!("goto {:?} to {:?}", pc, $l);
+            { db!("goto {:?} to {:?}", pc, $l);
               pc = $l;
               continue;
             }
@@ -304,38 +309,44 @@ const GOTO_MACRO_DEFINITION: &'static str = r#"
     }
 "#;
 
-const L0_ARM: &'static str = r#"
+fn l0_arm() -> String {
+    format!(r#"
             // This is kernel of the loop, but it is *not* where
             // we start (note that `pc` is set to `L::L_S` for some `S` above).
-            L::_0 => {
-                match self.r.pop() {
-                    Some(Desc(L, u, j)) => {
-                        self.s = u;
-                        self.i = j;
+            L::_0 => {{
+                match {context}.r_pop() {{
+                    Some(Desc(L, u, j)) => {{
+                        {context}.set_s(u);
+                        {context}.set_i(j);
                         goto!( L );
-                    }
-                    None => {
-                        if self.r.seen.contains(
+                    }}
+                    None => {{
+                        if {context}.r_seen_contains(
                             &Desc(L::_0,
-                                  Stack(self.g.dummy),
-                                  InputPos(self.I.len()))) {
-                            return Ok(Success);
-                        } else {
-                            return Err(ParseError);
-                        }
-                    }
-                }
-            }
-"#;
+                                  Stack({context}.g_dummy()),
+                                  InputPos({context}.i_len()))) {{
+                            return Ok(C::Success::default());
+                        }} else {{
+                            return Err(C::ParseError::default());
+                        }}
+                    }}
+                }}
+            }}
+"#,
+            context=CONTEXT)
+}
+
 
 fn prefix(rb: &RustBackend) -> String {
     let labels: String = rb.all_labels().into_iter()
         .map(|label| format!("    {},\n", label.render_def()))
         .collect();
     let names_to_labels: String = rb.all_labels().into_iter()
-        .map(|label| format!("            {} => Some({}),\n", label.name, label.render_use()))
+        .map(|label| format!("            \"{}\" => Some({}),\n", label.name, label.render_use()))
         .collect();
     format!(r###"
+use pgy_runtime::*;
+
 #[derive(Debug)]
 enum Label {{
 {labels}
@@ -351,9 +362,9 @@ impl Label {{
     }}
 }}
 {db_macro_definition}
-fn parse<C:Context>(&C, start_name: &str) -> Result<C::Success, C::ParseError> {{
+fn parse<'g, C:Context<'g, Label>>({context}: &mut C, start_name: &str) -> Result<C::Success, C::ParseError> {{
     use self::Label as L;
-    let mut pc = self::Label::from_name(format!("L_{{}}", start_name)).unwrap();
+    let mut pc = self::Label::from_name(&format!("L_{{}}", start_name)).unwrap();
     {goto_macro_definition}
     loop {{
         pc = match pc {{
@@ -363,7 +374,8 @@ fn parse<C:Context>(&C, start_name: &str) -> Result<C::Success, C::ParseError> {
             names_to_labels=names_to_labels,
             db_macro_definition = DB_MACRO_DEFINITION,
             goto_macro_definition = GOTO_MACRO_DEFINITION,
-            l0_arm = L0_ARM,
+            l0_arm = l0_arm(),
+            context=CONTEXT,
             )
 }
 
