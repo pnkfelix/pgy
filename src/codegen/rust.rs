@@ -37,7 +37,7 @@ pub enum CommandSeq { Just(Command), Rev(Vec<Command>) }
 impl Command {
     fn seq(self) -> CommandSeq {
         if let Command::Seq(v) = self {
-            CommandSeq::Rev(v)
+            CommandSeq::Rev(v.into_iter().rev().collect())
         } else {
             CommandSeq::Just(self)
         }
