@@ -2,7 +2,7 @@
 
 use grammar::{tiny_grammar, demo_grammar};
 use codegen::rust::RustBackend;
-use gll::codegen::{Backend, Codegen};
+use gll::codegen::{Backend, BackendText, Codegen, RenderIndent};
 
 #[test]
 fn demo_1() {
@@ -15,7 +15,7 @@ fn demo_1() {
         println!("grammar for {}", name);
         println!("");
         let g = g.tag_nonterminals();
-        let mut rb: RustBackend = Backend::new(&g);
+        let mut rb = RustBackend::new(&g);
         print!("{}", rb.prefix());
         let indent = rb.rule_indent_preference();
         let suffix = rb.suffix();

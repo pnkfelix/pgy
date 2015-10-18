@@ -1,12 +1,47 @@
 use grammar::{Grammar, NontermName, Rule, Sym, TermName};
 
-pub trait Backend<'a> {
+pub fn codegen<B:BackendText>(back: &mut B, g: &Grammar<usize>) -> String where
+    // IMO these should not be necessary, see Rust issue #29143
+    B::Block: RenderIndent
+{
+    let mut s = String::new();
+    s = s + &back.prefix();
+    let indent = back.rule_indent_preference();
+    let mut cg = Codegen::new(back, g);
+    for rule in &g.rules {
+        // FIXME: make `fn on_rule` take a `&Rule` instead of cloning.
+        let (c, blocks) = cg.on_rule(rule.clone());
+        let l_a = cg.backend.nonterm_label(rule.left);
+        let b = cg.backend.block(l_a, c);
+        s = s + &b.render_indent(indent);
+        let blocks: String = blocks.iter()
+            .map(|b|b.render_indent(indent))
+            .collect();
+        s = s + &blocks;
+    }
+    s = s + &cg.backend.suffix();
+
+    return s;
+}
+
+pub trait RenderIndent {
+    fn render_indent(&self, usize) -> String;
+    fn render(&self) -> String { self.render_indent(0) }
+}
+
+pub trait BackendText: Backend where Self::Block: RenderIndent {
+    fn prefix(&self) -> String;
+    fn suffix(&self) -> String;
+    fn rule_indent_preference(&self) -> usize;
+}
+
+pub trait Backend {
     type Command;
     type Expr;
     type Label: Clone;
     type Block;
 
-    fn new(g: &'a Grammar<usize>) -> Self;
+    fn grammar(&self) -> &Grammar<usize>;
 
     // (The label generators are all non `&mut self` because in
     // principle we should generate the labels ahead of time
@@ -92,12 +127,17 @@ pub trait Backend<'a> {
     fn pop(&mut self) -> Self::Command;
 }
 
-pub struct Codegen<'a, B:Backend<'a>+'a> {
+pub struct Codegen<'a, B:Backend+'a> {
     pub backend: &'a mut B,
     pub grammar: &'a Grammar<usize>,
 }
 
-impl<'a, C:Backend<'a>> Codegen<'a, C> {
+impl<'a, C:Backend> Codegen<'a, C> {
+    pub fn new(back: &'a mut C, g: &'a Grammar<usize>) -> Self {
+        Codegen { backend: back, grammar: g }
+    }
+    pub fn grammar(&self) -> &Grammar<usize> { self.grammar }
+
     // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
     pub fn on_term(&mut self, a: TermName) -> C::Command {
         let b = &mut self.backend;
@@ -252,7 +292,7 @@ impl<'a, C:Backend<'a>> Codegen<'a, C> {
                r: Rule<usize>) -> (C::Command,
                                    Vec<C::Block>) {
         let Rule { left: a, right_hands: ref alphas } = r;
-        let c = if self.grammar.ll1s.contains(&a) {
+        let c = if self.grammar().ll1s.contains(&a) {
             let b = &mut self.backend;
             let mut c = b.no_op();
             for (i, alpha) in alphas.iter().enumerate() {

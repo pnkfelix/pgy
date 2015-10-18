@@ -1,4 +1,4 @@
-use gll::codegen::Backend;
+use gll::codegen::{Backend, BackendText, RenderIndent};
 use grammar::{Grammar, NontermName, Rule, SetUpdate, Sym, TermName};
 
 use std::borrow::Cow;
@@ -15,8 +15,8 @@ pub enum Command {
 
 fn make_indent(i: usize) -> String { iter::repeat(' ').take(i).collect() }
 
-impl Command {
-    pub fn render_indent(&self, i: usize) -> String {
+impl RenderIndent for Command {
+    fn render_indent(&self, i: usize) -> String {
         let indent = || make_indent(i);
         match *self {
             Command::One(ref s) => indent() + s + "\n",
@@ -36,10 +36,6 @@ impl Command {
                         el.render_indent(i + 4),
                         indent()),
         }
-    }
-
-    pub fn render(&self) -> String {
-        self.render_indent(0)
     }
 }
 
@@ -80,6 +76,7 @@ pub struct Expr(String);
 #[derive(Clone, Debug)]
 pub struct Label { name: Cow<'static, str> }
 
+#[allow(non_snake_case)]
 pub fn Label<N:Into<Cow<'static, str>>>(name: N) -> Label { Label { name: name.into() } }
 
 impl Label {
@@ -90,34 +87,38 @@ impl Label {
 #[derive(Debug)]
 pub struct Block(Label, Command);
 
-impl Block {
-    pub fn render_indent(&self, i: usize) -> String {
+impl RenderIndent for Block {
+    fn render_indent(&self, i: usize) -> String {
         let indent = || make_indent(i);
         format!("{}{} => {{\n{}{}}}\n", indent(), (self.0).render_use(),
                 self.1.render_indent(i+4),
                 indent())
     }
-    pub fn render(&self) -> String {
-        self.render_indent(0)
+}
+
+pub struct RustBackend(Grammar<usize>);
+
+impl RustBackend {
+    pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
+    pub fn new(g: &Grammar<usize>) -> RustBackend {
+        // FIXME: should not need to clone its own copy of the grammar
+        RustBackend(g.clone())
     }
 }
 
-pub struct RustBackend<'a>(&'a Grammar<usize>);
-
-impl<'a> RustBackend<'a> {
-    pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
-    pub fn prefix(&self) -> String { prefix(self) }
-    pub fn suffix(&self) -> String { suffix(self) }
-    pub fn rule_indent_preference(&self) -> usize { "            ".len() }
+impl BackendText for RustBackend {
+    fn prefix(&self) -> String { prefix(self) }
+    fn suffix(&self) -> String { suffix(self) }
+    fn rule_indent_preference(&self) -> usize { "            ".len() }
 }
 
-impl<'a> Backend<'a> for RustBackend<'a> {
+impl Backend for RustBackend {
     type Command = Command;
     type Expr = Expr;
     type Label = Label;
     type Block = Block;
 
-    fn new(g: &'a Grammar<usize>) -> Self { RustBackend(g) }
+    fn grammar(&self) -> &Grammar<usize> { &self.0 }
 
     fn label_0(&self) -> Label { Label("_0") }
 
@@ -367,7 +368,7 @@ fn parse<C:Context>(&C, start_name: &str) -> Result<C::Success, C::ParseError> {
             )
 }
 
-fn suffix(rb: &RustBackend) -> String {
+fn suffix(_rb: &RustBackend) -> String {
     format!(r###"        }}
     }}
 }}
