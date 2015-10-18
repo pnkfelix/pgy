@@ -32,5 +32,5 @@ fn demo_1() {
     }
 
     // (uncomment to show the output above)
-    assert!(false);
+    // assert!(false);
 }
