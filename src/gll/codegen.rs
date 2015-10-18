@@ -1,14 +1,14 @@
 use grammar::{Grammar, NontermName, Rule, Sym, TermName};
 
-pub fn codegen<B:BackendText>(back: &mut B, g: &Grammar<usize>) -> String where
+pub fn codegen<B:BackendText>(back: &mut B) -> String where
     // IMO these should not be necessary, see Rust issue #29143
     B::Block: RenderIndent
 {
     let mut s = String::new();
     s = s + &back.prefix();
     let indent = back.rule_indent_preference();
-    let mut cg = Codegen::new(back, g);
-    for rule in &g.rules {
+    let mut cg = Codegen::new(back);
+    for rule in &cg.grammar().rules {
         // FIXME: make `fn on_rule` take a `&Rule` instead of cloning.
         let (c, blocks) = cg.on_rule(rule.clone());
         let l_a = cg.backend.nonterm_label(rule.left);
@@ -129,14 +129,13 @@ pub trait Backend {
 
 pub struct Codegen<'a, B:Backend+'a> {
     pub backend: &'a mut B,
-    pub grammar: &'a Grammar<usize>,
 }
 
 impl<'a, C:Backend> Codegen<'a, C> {
-    pub fn new(back: &'a mut C, g: &'a Grammar<usize>) -> Self {
-        Codegen { backend: back, grammar: g }
+    pub fn new(back: &'a mut C) -> Self {
+        Codegen { backend: back }
     }
-    pub fn grammar(&self) -> &Grammar<usize> { self.grammar }
+    pub fn grammar(&self) -> &Grammar<usize> { self.backend.grammar() }
 
     // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
     pub fn on_term(&self, a: TermName) -> C::Command {

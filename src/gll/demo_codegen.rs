@@ -19,7 +19,7 @@ fn demo_1() {
         print!("{}", rb.prefix());
         let indent = rb.rule_indent_preference();
         let suffix = rb.suffix();
-        let mut cg = Codegen { backend: &mut rb, grammar: &g };
+        let mut cg = Codegen { backend: &mut rb };
         for rule in &g.rules {
             // FIXME: make `fn on_rule` take a `&Rule` instead of cloning.
             let (c, blocks) = cg.on_rule(rule.clone());
