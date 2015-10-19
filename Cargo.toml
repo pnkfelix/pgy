@@ -6,3 +6,6 @@ authors = ["pnkfelix"]
 [dependencies.pgy_runtime]
 git = "http://github.com/pnkfelix/pgy_runtime.git"
 # path = "/home/pnkfelix/Dev/Rust/pgy_runtime"
+
+[[example]]
+name = "micro_grammars"
