@@ -347,9 +347,13 @@ fn prefix(rb: &RustBackend) -> String {
     format!(r###"
 use pgy_runtime::*;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum Label {{
 {labels}
+}}
+
+impl LabelZero for Label {{
+    fn label_zero() -> Self {{ Label::_0 }}
 }}
 
 impl Label {{
@@ -362,7 +366,7 @@ impl Label {{
     }}
 }}
 {db_macro_definition}
-fn parse<'g, C:Context<'g, Label>>({context}: &mut C, start_name: &str) -> Result<C::Success, C::ParseError> {{
+pub fn parse<'g, C:Context<'g, Label>>({context}: &mut C, start_name: &str) -> Result<C::Success, C::ParseError> {{
     use self::Label as L;
     let mut pc = self::Label::from_name(&format!("L_{{}}", start_name)).unwrap();
     {goto_macro_definition}
