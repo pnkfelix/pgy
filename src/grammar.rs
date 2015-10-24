@@ -613,7 +613,8 @@ impl<E:Copy> Grammar<E> {
         self.rules[0].left
     }
 
-    fn first_t(&self, a: NontermName) -> &[TermName] {
+    #[cfg(apparently_dead_code)]
+    pub fn first_t(&self, a: NontermName) -> &[TermName] {
         &self.firsts[a][..]
     }
 
