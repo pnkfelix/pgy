@@ -96,10 +96,16 @@ impl RenderIndent for Block {
     }
 }
 
+pub type NonTerm = &'static str;
+
 pub struct RustBackend<'a>(pub &'a Grammar<usize>);
 
 impl<'a> RustBackend<'a> {
     pub fn all_labels(&self) -> Vec<Label> { all_labels(self) }
+    pub fn all_nonterms(&self) -> Vec<NonTerm> { all_nonterms(self) }
+    pub fn impl_for_nonterm<E:Copy>(&self, n: NonTerm, g: &Grammar<E>) -> String {
+        impl_for_nonterm(n, g)
+    }
     pub fn new(g: &'a Grammar<usize>) -> RustBackend {
         RustBackend(g)
     }
@@ -147,7 +153,7 @@ impl<'a> Backend for RustBackend<'a> {
 
     // Execute this command to report the parse attempt failed.
     fn report_parse_failure(&self, msg: &str) -> Self::Command {
-        Command::One(format!("return Err(\"{}\");", msg))
+        Command::One(format!("return Err(From::from(\"{}\"));", msg))
     }
 
     // Execute this command if something unexpected happened
@@ -198,6 +204,26 @@ impl<'a> Backend for RustBackend<'a> {
     // `I[j] == a`
     fn curr_matches_term(&self, a: TermName) -> Self::Expr {
         Expr(format!("{}.i_in(&[C::Term::from_char('{}')])", CONTEXT, a))
+    }
+
+    // let x = I[j]; let N = n;
+    // `x in FIRST(N$)`
+    //
+    // The leading optional component in alpha is meant to be
+    // the first element of alpha, if it is present at all.
+    fn test_end<E:Copy>(&self, n: NontermName) -> Self::Expr {
+        let alpha = vec![Sym::N { name: n, x: () }];
+        let first = self.0.first(&alpha);
+        let first_pred = if first.is_nullable() {
+            format!("{}.i_in_end", CONTEXT)
+        } else {
+            format!("{}.i_in", CONTEXT)
+        };
+        let term_commas: String =
+            first.into_terms().into_iter()
+            .map(|term| format!("{},", term))
+            .collect();
+        Expr(format!("{}(&[{}])", first_pred, term_commas))
     }
 
     // let x = I[j]; let α = alpha;
@@ -275,6 +301,10 @@ impl<'a> Backend for RustBackend<'a> {
     }
 }
 
+fn all_nonterms(rb: &RustBackend) -> Vec<NonTerm> {
+    rb.0.rules.iter().map(|r|r.left).collect()
+}
+
 fn all_labels(rb: &RustBackend) -> Vec<Label> {
     let mut labels = vec![Label("_0")];
     for &Rule { left, ref right_hands } in &rb.0.rules {
@@ -337,18 +367,56 @@ fn l0_arm() -> String {
 }
 
 
+fn impl_for_nonterm<E:Copy>(n: NonTerm, g: &Grammar<E>) -> String {
+    let first = g.first(&vec![Sym::N { name: n, x: () }]);
+    let pred = if first.is_nullable() {
+        format!("{}.i_in_end", CONTEXT)
+    } else {
+        format!("{}.i_in", CONTEXT)
+    };
+    let terms: String =
+        first.into_terms().into_iter()
+        .map(|term| format!("C::Term::from_char('{}'),", term))
+        .collect();
+    format!(r#"
+    impl StartNonTerm<Label> for {nt} {{
+        /// Returns FIRST(N$) for nonterm N (= nt).
+        fn first_end<'g, C:Context<'g, Label>>(self, {context}: &C) -> bool {{
+            {pred}(&[{terms}])
+        }}
+
+        fn to_label(self) -> Label {{
+            Label::L_{nt}
+        }}
+    }}
+    "#, nt=n, pred=pred, terms=terms, context=CONTEXT)
+}
+
 fn prefix(rb: &RustBackend) -> String {
     let labels: String = rb.all_labels().into_iter()
         .map(|label| format!("    {},\n", label.render_def()))
         .collect();
+    let nonterm_variants: String = rb.all_nonterms().into_iter()
+        .map(|nonterm| format!("    {},\n", nonterm))
+        .collect();
+    let nonterm_types: String = rb.all_nonterms().into_iter()
+        .map(|nonterm| format!(r##"
+    #[derive(Copy, Clone, PartialEq, Eq, Debug)]
+    pub struct {};
+"##, nonterm))
+        .collect();
     let names_to_labels: String = rb.all_labels().into_iter()
         .map(|label| format!("            \"{}\" => Some({}),\n", label.name, label.render_use()))
+        .collect();
+    let nonterm_impls: String =
+        rb.all_nonterms().into_iter()
+        .map(|nonterm| format!("{}\n\n", rb.impl_for_nonterm(nonterm, &rb.0)))
         .collect();
     format!(r###"
 use pgy_runtime::*;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-enum Label {{
+pub enum Label {{
 {labels}
 }}
 
@@ -365,21 +433,51 @@ impl Label {{
         }}
     }}
 }}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+enum NonTerm {{
+{nonterm_variants}
+}}
+
+pub mod nonterm {{
+    use pgy_runtime::{{Context, FromChar, StartNonTerm}};
+    use super::{{Label}};
+
+{nonterm_types}
+
+{nonterm_impls}
+}}
+
 {db_macro_definition}
-pub fn parse<'g, C:Context<'g, Label>>({context}: &mut C, start_name: &str) -> Result<C::Success, C::ParseError> {{
+pub fn parse<'g, C:Context<'g, Label>, S:Copy+StartNonTerm<Label>>({context}: &mut C, s: S) -> Result<C::Success, C::ParseError> {{
     use self::Label as L;
-    let mut pc = self::Label::from_name(&format!("L_{{}}", start_name)).unwrap();
+
+    let mut pc;
     {goto_macro_definition}
+
+    // pseudo `if (I[0] in FIRST(S$)) then goto L_S else report fail
+    // FIXME
+    if s.first_end({context}) {{
+        // self::Label::from_name(&format!("L_{{}}", start_name)).unwrap();
+        pc = s.to_label();
+    }} else {{
+        {init_parse_failure}
+    }}
+
     loop {{
         pc = match pc {{
             {l0_arm}
 "###,
             labels=labels,
+            nonterm_types=nonterm_types,
+            nonterm_variants=nonterm_variants,
             names_to_labels=names_to_labels,
+            nonterm_impls=nonterm_impls,
             db_macro_definition = DB_MACRO_DEFINITION,
             goto_macro_definition = GOTO_MACRO_DEFINITION,
             l0_arm = l0_arm(),
             context=CONTEXT,
+            init_parse_failure=rb.report_parse_failure("init").render(),
             )
 }
 

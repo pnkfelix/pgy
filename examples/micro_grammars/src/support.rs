@@ -164,6 +164,10 @@ pub struct Success;
 #[derive(Default, Debug)]
 pub struct ParseError;
 
+impl From<&'static str> for ParseError {
+    fn from(s: &'static str) -> Self { ParseError }
+}
+
 impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoContext<'i, 'g, LABEL> {
     type Success = Success;
     type ParseError = ParseError;

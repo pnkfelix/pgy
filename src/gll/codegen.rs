@@ -107,6 +107,13 @@ pub trait Backend {
     // `I[j] == a`
     fn curr_matches_term(&self, a: TermName) -> Self::Expr;
 
+    // let x = I[j]; let N = n;
+    // `x in FIRST(N$)`
+    //
+    // The leading optional component in alpha is meant to be
+    // the first element of alpha, if it is present at all.
+    fn test_end<E:Copy>(&self, n: NontermName) -> Self::Expr;
+
     // let x = I[j]; let α = alpha;
     // `x in FIRST(α) or empty in FIRST(α) and x in FOLLOW(A)`
     //
