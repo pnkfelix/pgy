@@ -47,93 +47,93 @@ pub trait Backend {
     // principle we should generate the labels ahead of time
     // for any given grammar.)
 
-    // L_0 is the central loop of the parser.
+    /// L_0 is the central loop of the parser.
     fn label_0(&self) -> Self::Label;
 
-    // R_A_k labels function call return to nonterm N from the
-    // call associated with A_k. (A_k is unique in the grammar
-    // and thus we can derive `N` from it in the formalism, but
-    // it seems simpler to just pass it along in this API here.)
+    /// R_A_k labels function call return to nonterm N from the
+    /// call associated with A_k. (A_k is unique in the grammar
+    /// and thus we can derive `N` from it in the formalism, but
+    /// it seems simpler to just pass it along in this API here.)
     fn return_label(&self, n: NontermName, a_k: (NontermName, usize)) -> Self::Label;
 
-    // L_A labels parse function for A.
+    /// L_A labels parse function for A.
     fn nonterm_label(&self, a: NontermName) -> Self::Label;
 
-    // L_A_i labels function for parsing ith alternate α_i of A.
+    /// L_A_i labels function for parsing ith alternate α_i of A.
     fn alternate_label(&self,
                        a_i: (NontermName, usize)) -> Self::Label;
 
 
-    // `L: C`
-    // (note that `C` must have control flow ending in goto...)
+    /// `L: C`
+    /// (note that `C` must have control flow ending in goto...)
     fn block(&self, l: Self::Label, c: Self::Command) -> Self::Block;
 
-    // Execute this command to report the parse attempt failed.
+    /// Execute this command to report the parse attempt failed.
     fn report_parse_failure(&self, &str) -> Self::Command;
 
-    // Execute this command if something unexpected happened
-    // in the generated code.
+    /// Execute this command if something unexpected happened
+    /// in the generated code.
     fn panic_fail(&self, &str) -> Self::Command;
 
-    // the no-op command makes some constructions easier.
+    /// the no-op command makes some constructions easier.
     fn no_op(&self) -> Self::Command;
 
-    // `cmd1, cmd2`
+    /// `cmd1, cmd2`
     fn seq(&self,
            cmd1: Self::Command,
            cmd2: Self::Command) -> Self::Command;
 
-    // `if test { then }
+    /// `if test { then }
     fn if_(&self,
            test: Self::Expr,
            then: Self::Command) -> Self::Command;
 
-    // `if test { then } else { else_ }`
+    /// `if test { then } else { else_ }`
     fn if_else(&self,
                test: Self::Expr,
                then: Self::Command,
                else_: Self::Command) -> Self::Command;
 
-    // `j := j + 1`
+    /// `j := j + 1`
     fn increment_curr(&self) -> Self::Command;
 
-    // let L = label;
-    // `goto L`
+    /// let L = label;
+    /// `goto L`
     fn goto(&self, label: Self::Label) -> Self::Command;
 
-    // this comes up a lot.
+    /// this comes up a lot.
     fn goto_l0(&self) -> Self::Command {
         let l0 = self.label_0();
         self.goto(l0)
     }
 
-    // `I[j] == a`
+    /// `I[j] == a`
     fn curr_matches_term(&self, a: TermName) -> Self::Expr;
 
-    // let x = I[j]; let N = n;
-    // `x in FIRST(N$)`
-    //
-    // The leading optional component in alpha is meant to be
-    // the first element of alpha, if it is present at all.
+    /// let x = I[j]; let N = n;
+    /// `x in FIRST(N$)`
+    ///
+    /// The leading optional component in alpha is meant to be
+    /// the first element of alpha, if it is present at all.
     fn test_end<E:Copy>(&self, n: NontermName) -> Self::Expr;
 
-    // let x = I[j]; let α = alpha;
-    // `x in FIRST(α) or empty in FIRST(α) and x in FOLLOW(A)`
-    //
-    // The leading optional component in alpha is meant to be
-    // the first element of alpha, if it is present at all.
+    /// let x = I[j]; let α = alpha;
+    /// `x in FIRST(α) or empty in FIRST(α) and x in FOLLOW(A)`
+    ///
+    /// The leading optional component in alpha is meant to be
+    /// the first element of alpha, if it is present at all.
     fn test<E:Copy>(&self,
                     a: NontermName,
                     alpha: (Option<NontermName>, &[Sym<E>])) -> Self::Expr;
 
-    // `c_u := create(l, c_u, j)`
+    /// `c_u := create(l, c_u, j)`
     fn create(&self,
               l: Self::Label) -> Self::Command;
 
-    // `add(l, c_u, j)
+    /// `add(l, c_u, j)
     fn add(&self, l: Self::Label) -> Self::Command;
 
-    // `pop(c_u, j)`
+    /// `pop(c_u, j)`
     fn pop(&self) -> Self::Command;
 }
 
@@ -147,7 +147,7 @@ impl<'a, C:Backend> Codegen<'a, C> {
     }
     pub fn grammar(&self) -> &Grammar<usize> { self.backend.grammar() }
 
-    // code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
+    /// code(aα, j, X) = if I[j] = a {j := j+1} else {goto L_0}
     pub fn on_term(&self, a: TermName) -> C::Command {
         let b = &self.backend;
         let matches = b.curr_matches_term(a);
@@ -156,13 +156,13 @@ impl<'a, C:Backend> Codegen<'a, C> {
         b.if_else(matches, next_j, goto_l0)
     }
 
-    // code(A_kα, j, X) =
-    //   if test(I[j], X, A_k α) {
-    //      c_u := create(R_A_k, c_u, j), goto L_A
-    //   } else {
-    //      goto L_0
-    //   }
-    //   R_A_k:
+    /// code(A_kα, j, X) =
+    ///   if test(I[j], X, A_k α) {
+    ///      c_u := create(R_A_k, c_u, j), goto L_A
+    ///   } else {
+    ///      goto L_0
+    ///   }
+    ///   R_A_k:
     pub fn on_nonterm_instance<E:Copy>(&self,
                                    (a, k): (NontermName, usize),
                                    alpha: &[Sym<E>],
@@ -180,9 +180,9 @@ impl<'a, C:Backend> Codegen<'a, C> {
         (c, l)
     }
 
-    // code(α, j, X) = ...
-    //
-    // (driver for calling either of on_term/on_nonterm_instance)
+    /// code(α, j, X) = ...
+    ///
+    /// (driver for calling either of on_term/on_nonterm_instance)
     pub fn on_symbols(&self,
                       alpha: &[Sym<usize>],
                       x: NontermName) -> (C::Command, Option<C::Label>) {
@@ -265,26 +265,26 @@ impl<'a, C:Backend> Codegen<'a, C> {
         }
     }
 
-    // code(A ::= empty, j) = pop(c_u, j); goto L_0
-    //
-    // code(A ::= <term> x_2 .. x_f , j) =
-    //   j := j + 1
-    //   code(x2    .. x_f, j, A)
-    //   code(   x3 .. x_f, j, A)
-    //   ...
-    //   code(         x_f, j, A)
-    //   pop(c_u, j),
-    //   goto L_0
-    //
-    // code(A ::= X_l x_2 .. x_f, j) =
-    //   c_u := create(R_X_l, c_u, j);
-    //   goto L_X;
-    //   R_X_l: code(x_2     .. x_f, j, A)
-    //          code(    x_3 .. x_f, j, A)
-    //          ...
-    //          code(           x_f, j, A)
-    //          pop(c_u, j)
-    //          goto L_0
+    /// code(A ::= empty, j) = pop(c_u, j); goto L_0
+    ///
+    /// code(A ::= <term> x_2 .. x_f , j) =
+    ///   j := j + 1
+    ///   code(x2    .. x_f, j, A)
+    ///   code(   x3 .. x_f, j, A)
+    ///   ...
+    ///   code(         x_f, j, A)
+    ///   pop(c_u, j),
+    ///   goto L_0
+    ///
+    /// code(A ::= X_l x_2 .. x_f, j) =
+    ///   c_u := create(R_X_l, c_u, j);
+    ///   goto L_X;
+    ///   R_X_l: code(x_2     .. x_f, j, A)
+    ///          code(    x_3 .. x_f, j, A)
+    ///          ...
+    ///          code(           x_f, j, A)
+    ///          pop(c_u, j)
+    ///          goto L_0
 
     pub fn on_production(&self,
                          a: NontermName,
@@ -335,26 +335,26 @@ impl<'a, C:Backend> Codegen<'a, C> {
         }
     }
 
-    // let the rule for A be `A ::= α_1 | ... | α_t`
-    //
-    // code(A, j) if A is LL(1) nonterm =
-    //   if test(I[j], A, α_1) { goto L_A_1 }
-    //   ...
-    //   else if test(I[j], A, α_t) { goto L_A_t }
-    //   // (assert unreachable here?)
-    // L_A_1: code(A ::= α_1, j)
-    // ...
-    // L_A_t: code(A ::= α_t, j)
-    //
-    // code(A, j) if A is not LL(1) nonterm =
-    //   if test(I[j], A, α_1) { add(L_A_1, c_u, j) }
-    //   ...
-    //   if test(I[j], A, α_1) { add(L_A_t, c_u, j) }
-    //   goto L_0
-    // L_A_1: code(A ::= α_1, j)
-    // ...
-    // L_A_t: code(A ::= α_t, j)
-    //
+    /// let the rule for A be `A ::= α_1 | ... | α_t`
+    ///
+    /// code(A, j) if A is LL(1) nonterm =
+    ///   if test(I[j], A, α_1) { goto L_A_1 }
+    ///   ...
+    ///   else if test(I[j], A, α_t) { goto L_A_t }
+    ///   // (assert unreachable here?)
+    /// L_A_1: code(A ::= α_1, j)
+    /// ...
+    /// L_A_t: code(A ::= α_t, j)
+    ///
+    /// code(A, j) if A is not LL(1) nonterm =
+    ///   if test(I[j], A, α_1) { add(L_A_1, c_u, j) }
+    ///   ...
+    ///   if test(I[j], A, α_1) { add(L_A_t, c_u, j) }
+    ///   goto L_0
+    /// L_A_1: code(A ::= α_1, j)
+    /// ...
+    /// L_A_t: code(A ::= α_t, j)
+    ///
     pub fn on_rule(&self,
                    r: Rule<usize>) -> (C::Command,
                                        Vec<C::Block>) {
