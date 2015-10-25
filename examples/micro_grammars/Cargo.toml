@@ -9,4 +9,4 @@ build = "build.rs"
 path = "../../../pgy"
 
 [dependencies.pgy_runtime]
-path = "../../../pgy_runtime"
+git = "http://github.com/pnkfelix/pgy_runtime.git"
