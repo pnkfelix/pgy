@@ -129,9 +129,10 @@ impl<'a> Backend for RustBackend<'a> {
 
     fn label_0(&self) -> Label { Label("_0") }
 
-    // R_A_k labels function call return lines.
-    fn return_label(&self, (a, k): (NontermName, usize)) -> Self::Label {
-        Label(format!("R_{}_{}", a, k+1))
+    // R_N_A_k labels function call return to N from call associated
+    // with A_k.
+    fn return_label(&self, n: NontermName, (a, k): (NontermName, usize)) -> Self::Label {
+        Label(format!("R_{}_{}_{}", n, a, k+1))
     }
 
     // L_A labels parse function for A.
@@ -313,7 +314,7 @@ fn all_labels(rb: &RustBackend) -> Vec<Label> {
             labels.push(rb.alternate_label((left, i)));
             for sym in alt {
                 if let &Sym::N { name, x } = sym {
-                    labels.push(rb.return_label((name, x)));
+                    labels.push(rb.return_label(left, (name, x)));
                 }
             }
         }

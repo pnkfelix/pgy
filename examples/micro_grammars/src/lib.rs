@@ -11,18 +11,40 @@ use self::support::DemoContext;
 mod parse_a;
 mod support;
 
-#[test]
-fn test_a_a() {
-    let input = "a";
-    let g = Graph::new();
-    let mut c = DemoContext::new(input.as_bytes(), &g);
-    parse_a::parse(&mut c, parse_a::nonterm::S).unwrap();
+mod test_a {
+    use pgy_runtime::graph::Graph;
+    use super::support::DemoContext;
+    use super::parse_a::{parse, nonterm};
+
+    #[test]
+    fn test_a_a() {
+        let input = "a";
+        let g = Graph::new();
+        let mut c = DemoContext::new(input.as_bytes(), &g);
+        parse(&mut c, nonterm::S).unwrap();
+    }
+
+    #[test]
+    fn test_a_b() {
+        let input = "b";
+        let g = Graph::new();
+        let mut c = DemoContext::new(input.as_bytes(), &g);
+        parse(&mut c, nonterm::S).unwrap_err();
+    }
 }
 
-#[test]
-fn test_a_b() {
-    let input = "b";
-    let g = Graph::new();
-    let mut c = DemoContext::new(input.as_bytes(), &g);
-    parse_a::parse(&mut c, parse_a::nonterm::S).unwrap_err();
+mod parse_S;
+mod test_S {
+    use pgy_runtime::graph::Graph;
+    use super::support::DemoContext;
+    use super::parse_S::{parse, nonterm};
+
+    #[test]
+    fn test_a_a() {
+        let input = "a";
+        let g = Graph::new();
+        let mut c = DemoContext::new(input.as_bytes(), &g);
+        parse(&mut c, nonterm::S).unwrap();
+    }
+
 }

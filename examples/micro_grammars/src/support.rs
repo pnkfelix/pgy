@@ -173,7 +173,30 @@ impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoCo
     type ParseError = ParseError;
     type Term = char;
 
+    fn create(&mut self, l: LABEL) {
+        db!("  create self: {:?} l: {:?}", self, l);
+        let L_j = GData::new(l, self.i);
+        let u = self.s;
+        let v = self.g.graph.nodes()
+            .find(|n| n.data == L_j)
+            .map(|p|*p);
+        let v = match v {
+            Some(v) => v,
+            None => self.g.graph.add_node(L_j)
+        };
+        if v.children().find(|c| Stack(c) == u).is_none() {
+            v.add_child(u.0);
+            for &(p, k) in self.popped.elems() {
+                if p == Stack(v) {
+                    self.r.add(Desc(l, u, k));
+                }
+            }
+        }
+        self.s = Stack(v);
+    }
+
     fn i_in(&self, terms: &[char]) -> bool { self.i_in_core(terms, EndToken::Excl) }
+    fn i_in_end(&self, terms: &[char]) -> bool { self.i_in_core(terms, EndToken::Incl) }
     fn i_len(&self) -> usize { self.I.len() }
     fn i_incr(&mut self) { self.i.incr() }
 
@@ -197,4 +220,10 @@ impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoCo
     fn r_seen_contains(&self, d: &Desc<'g, LABEL>) -> bool { self.r.seen.contains(d) }
     fn set_s(&mut self, u: Stack<'g, LABEL>) { self.s = u }
     fn set_i(&mut self, j: InputPos) { self.i = j; }
+
+    fn add_s(&mut self, l: LABEL) {
+        let u = self.s;
+        let j = self.i;
+        self.add(l, u, j);
+    }
 }

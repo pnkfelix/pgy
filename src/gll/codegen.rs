@@ -50,8 +50,11 @@ pub trait Backend {
     // L_0 is the central loop of the parser.
     fn label_0(&self) -> Self::Label;
 
-    // R_A_k labels function call return lines.
-    fn return_label(&self, a_k: (NontermName, usize)) -> Self::Label;
+    // R_A_k labels function call return to nonterm N from the
+    // call associated with A_k. (A_k is unique in the grammar
+    // and thus we can derive `N` from it in the formalism, but
+    // it seems simpler to just pass it along in this API here.)
+    fn return_label(&self, n: NontermName, a_k: (NontermName, usize)) -> Self::Label;
 
     // L_A labels parse function for A.
     fn nonterm_label(&self, a: NontermName) -> Self::Label;
@@ -159,19 +162,22 @@ impl<'a, C:Backend> Codegen<'a, C> {
     //   } else {
     //      goto L_0
     //   }
+    //   R_A_k:
     pub fn on_nonterm_instance<E:Copy>(&self,
                                    (a, k): (NontermName, usize),
                                    alpha: &[Sym<E>],
-                                   x: NontermName) -> C::Command {
+                                   x: NontermName) -> (C::Command, C::Label) {
         let b = &self.backend;
         let matches = b.test(x, (Some(a), alpha));
-        let r_a_k = b.return_label((a, k));
+        let r_a_k = b.return_label(x, (a, k));
         let create = b.create(r_a_k);
         let l_a = b.nonterm_label(a);
         let goto_la = b.goto(l_a);
         let create_then_goto_la = b.seq(create, goto_la);
         let goto_l0 = b.goto_l0();
-        b.if_else(matches, create_then_goto_la, goto_l0)
+        let c = b.if_else(matches, create_then_goto_la, goto_l0);
+        let l = b.return_label(x, (a, k));
+        (c, l)
     }
 
     // code(α, j, X) = ...
@@ -179,32 +185,84 @@ impl<'a, C:Backend> Codegen<'a, C> {
     // (driver for calling either of on_term/on_nonterm_instance)
     pub fn on_symbols(&self,
                       alpha: &[Sym<usize>],
-                      x: NontermName) -> C::Command {
+                      x: NontermName) -> (C::Command, Option<C::Label>) {
         assert!(alpha.len() > 0);
         let (s_0, alpha) = alpha.split_at(1);
         match s_0[0] {
             Sym::T(t) =>
-                self.on_term(t),
-            Sym::N { name: a, x: x_ } =>
-                self.on_nonterm_instance((a, x_), alpha, x)
+                (self.on_term(t), None),
+            Sym::N { name: a, x: x_ } => {
+                let (c, l) = self.on_nonterm_instance((a, x_), alpha, x);
+                (c, Some(l))
+            }
         }
     }
 
-    // Given alpha = x1 x2 .. x_f, shorthand for
-    //
-    //   code(x1    .. x_f, j, A)
-    //   code(   x2 .. x_f, j, A)
-    //   ...
-    //   code(         x_f, j, A)
+    /// Given alpha = x1 x2 .. x_f, shorthand for
+    ///
+    ///   code(x1    .. x_f, j, A)
+    ///   code(   x2 .. x_f, j, A)
+    ///   ...
+    ///   code(         x_f, j, A)
+    ///
+    /// Each `code` maps to a command and (potentially) a trailing label;
+    /// therefore concatenating the codes results in a leading command
+    /// and a sequence of blocks.
+    /// The above maps to a command and a sequence of bl
     pub fn on_symbols_in_prod(&self,
                               alpha: &[Sym<usize>],
-                              a: NontermName) -> C::Command {
+                              a: NontermName,
+                              end_with: C::Command)
+                              -> (C::Command, Vec<C::Block>) {
         let mut c = self.backend.no_op();
-        for i in 0..alpha.len() {
-            let c2 = self.on_symbols(&alpha[i..], a);
-            c = self.backend.seq(c, c2);
+
+        enum BuildState<C:Backend> {
+            FirstCommand,
+            MakeEndBlock {
+                first: C::Command,
+                then: Vec<C::Block>,
+                end: C::Label
+            }
         }
-        c
+
+        let mut bs: BuildState<C> = BuildState::FirstCommand;
+        for i in 0..alpha.len() {
+            let (c2, opt_label) = self.on_symbols(&alpha[i..], a);
+            c = self.backend.seq(c, c2);
+            if let Some(l) = opt_label {
+                bs = match bs {
+                    BuildState::FirstCommand =>
+                        BuildState::MakeEndBlock {
+                            first: c,
+                            then: Vec::new(),
+                            end: l
+                        },
+                    BuildState::MakeEndBlock {first,mut then,end} => {
+                        let b = self.backend.block(end, c);
+                        then.push(b);
+                        BuildState::MakeEndBlock {
+                            first: first,
+                            then: then,
+                            end: l
+                        }
+                    }
+                };
+                c = self.backend.no_op();
+            }
+        }
+
+        match bs {
+            BuildState::FirstCommand => {
+                c = self.backend.seq(c, end_with);
+                return (c, Vec::new());
+            }
+            BuildState::MakeEndBlock { first, mut then, end } => {
+                c = self.backend.seq(c, end_with);
+                let b = self.backend.block(end, c);
+                then.push(b);
+                return (first, then);
+            }
+        }
     }
 
     // code(A ::= empty, j) = pop(c_u, j); goto L_0
@@ -231,10 +289,18 @@ impl<'a, C:Backend> Codegen<'a, C> {
     pub fn on_production(&self,
                          a: NontermName,
                          alpha: &[Sym<usize>]) -> (C::Command,
-                                                   Option<C::Block>) {
+                                                   Vec<C::Block>) {
+        let end_with = {
+            let b = &self.backend;
+            let pop = b.pop();
+            let goto_l0 = b.goto_l0();
+            b.seq(pop, goto_l0)
+        };
+
         if alpha.len() == 0 {
-            return (self.backend.pop(), None);
+            return (end_with, Vec::new());
         }
+
         match alpha[0] {
             Sym::T(_) => {
                 // The code produced here is only meant to be run if
@@ -243,17 +309,13 @@ impl<'a, C:Backend> Codegen<'a, C> {
                 // actually assert such a match, but whatever.
 
                 let next_j = self.backend.increment_curr();
-                let mut c = self.on_symbols_in_prod(&alpha[1..], a);
-                let b = &self.backend;
-                let mut c = b.seq(next_j, c);
-                let pop = b.pop();
-                c = b.seq(c, pop);
-                let goto_l0 = b.goto_l0();
-                (b.seq(c, goto_l0), None)
+                let (c, blocks) =
+                    self.on_symbols_in_prod(&alpha[1..], a, end_with);
+                (self.backend.seq(next_j, c), blocks)
             }
 
             Sym::N { name: X, x: l } => {
-                let r_X_l = self.backend.return_label((X, l));
+                let r_X_l = self.backend.return_label(a, (X, l));
                 let c1 = {
                     let b = &self.backend;
                     let l_X = b.nonterm_label(X);
@@ -262,14 +324,13 @@ impl<'a, C:Backend> Codegen<'a, C> {
                     b.seq(create, goto_lX)
                 };
 
-                let mut c2 = self.on_symbols_in_prod(&alpha[1..], a);
-                let b = &self.backend;
-                let pop = b.pop();
-                c2 = b.seq(c2, pop);
-                let goto_l0 = b.goto_l0();
-                c2 = b.seq(c2, goto_l0);
-                let block = b.block(r_X_l, c2);
-                (c1, Some(block))
+                let (c2, more_blocks) =
+                    self.on_symbols_in_prod(&alpha[1..], a, end_with);
+                let block = self.backend.block(r_X_l, c2);
+                let mut blocks = Vec::with_capacity(1 + more_blocks.len());
+                blocks.push(block);
+                for b in more_blocks { blocks.push(b); }
+                (c1, blocks)
             }
         }
     }
@@ -331,12 +392,12 @@ impl<'a, C:Backend> Codegen<'a, C> {
         // own block, so the total blocks is 2 * |alphas|.
         let mut blocks = Vec::with_capacity(2*alphas.len());
         for (i, alpha) in alphas.iter().enumerate() {
-            let (c, opt_b) = self.on_production(a, alpha);
+            let (c, more_blocks) = self.on_production(a, alpha);
             let b = &self.backend;
             let l_a_i = b.alternate_label((a, i));
             let block = b.block(l_a_i, c);
             blocks.push(block);
-            if let Some(b) = opt_b { blocks.push(b); }
+            for b in more_blocks { blocks.push(b); }
         }
 
         (c, blocks)
