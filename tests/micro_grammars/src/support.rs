@@ -1,6 +1,6 @@
 macro_rules! db {
     ($($tt:expr),*) => {
-        println!($($tt),*)
+        // println!($($tt),*)
     }
 }
 
@@ -63,19 +63,19 @@ struct R<'g, LABEL:'g> {
 
 impl<'g, LABEL: Eq + ::std::fmt::Debug> ::std::fmt::Debug for R<'g, LABEL> {
     fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(w, "R {{ todo: [");
+        try!(write!(w, "R {{ todo: ["));
         let mut seen_one = false;
         for d in &self.todo {
-            if seen_one { write!(w, ", "); }
-            write!(w, "{:?}", d);
+            if seen_one { try!(write!(w, ", ")); }
+            try!(write!(w, "{:?}", d));
             seen_one = true;
         }
-        write!(w, "], seen: {{");
+        try!(write!(w, "], seen: {{"));
         seen_one = false;
         for d in &self.seen {
             if !self.todo.contains(&d) {
-                if seen_one { write!(w, ", "); }
-                write!(w, "{:?}", d);
+                if seen_one { try!(write!(w, ", ")); }
+                try!(write!(w, "{:?}", d));
                 seen_one = true;
             }
         }
@@ -94,15 +94,13 @@ impl<'g, LABEL:'g + Eq + Copy + ::std::fmt::Debug> R<'g, LABEL> {
             self.todo.push(d);
         }
     }
-    fn nonempty(&self) -> bool {
-        self.todo.len() > 0
-    }
     fn pop(&mut self) -> Option<Desc<'g, LABEL>> {
         self.todo.pop()
     }
 }
 
 
+#[allow(non_snake_case)]
 pub struct DemoContext<'i, 'g, LABEL:'g> {
     i: InputPos,
     I: &'i [T],
@@ -129,12 +127,12 @@ impl<'i, 'g, LABEL:LabelZero + 'g + Copy + Eq + ::std::fmt::Debug> DemoContext<'
 
 impl<'i, 'g, LABEL: Eq + ::std::fmt::Debug> ::std::fmt::Debug for DemoContext<'i, 'g, LABEL> {
     fn fmt(&self, w: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(w, "DemoContext {{");
+        try!(write!(w, "DemoContext {{"));
         let (i0, i1) = self.I.split_at(self.i.0);
-        write!(w, "I: {:?}({}){:?}, ", T::s(i0), self.i.0, T::s(i1));
-        write!(w, "r: {:?}, ", self.r);
-        write!(w, "g, ");
-        write!(w, "s: {:?}", self.s);
+        try!(write!(w, "I: {:?}({}){:?}, ", T::s(i0), self.i.0, T::s(i1)));
+        try!(write!(w, "r: {:?}, ", self.r));
+        try!(write!(w, "g, "));
+        try!(write!(w, "s: {:?}", self.s));
         write!(w, "}}")
     }
 }
@@ -147,7 +145,9 @@ impl<'i, 'g, LABEL:'g + Eq + Copy + ::std::fmt::Debug> DemoContext<'i, 'g, LABEL
             (Some(c), _) => terms.contains(&(c.0 as char)),
         }
     }
-    fn i_in_end(&self, terms: &[char]) -> bool { self.i_in_core(terms, EndToken::Incl) }
+    // fn i_in_end(&self, terms: &[char]) -> bool {
+    //     self.i_in_core(terms, EndToken::Incl)
+    // }
 
     fn add(&mut self, l: LABEL, u: Stack<'g, LABEL>, j: InputPos) {
         // N.B. two U_j and R are combined into one (they are separate
@@ -165,7 +165,7 @@ pub struct Success;
 pub struct ParseError;
 
 impl From<&'static str> for ParseError {
-    fn from(s: &'static str) -> Self { ParseError }
+    fn from(_: &'static str) -> Self { ParseError }
 }
 
 impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoContext<'i, 'g, LABEL> {
@@ -174,6 +174,7 @@ impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoCo
     type Term = char;
 
     fn create(&mut self, l: LABEL) {
+        #![allow(non_snake_case)]
         db!("  create self: {:?} l: {:?}", self, l);
         let L_j = GData::new(l, self.i);
         let u = self.s;
@@ -201,6 +202,7 @@ impl<'i, 'g, LABEL: Copy + Eq + ::std::fmt::Debug> Context<'g, LABEL> for DemoCo
     fn i_incr(&mut self) { self.i.incr() }
 
     fn pop(&mut self) {
+        #![allow(non_snake_case)]
         db!("  pop self: {:?}", self);
         // pop L off stack s = s'::L, add (L, s', i) to R, where
         // i is current input position.

@@ -346,10 +346,10 @@ fn l0_arm() -> String {
             // we start (note that `pc` is set to `L::L_S` for some `S` above).
             L::_0 => {{
                 match {context}.r_pop() {{
-                    Some(Desc(L, u, j)) => {{
+                    Some(Desc(l, u, j)) => {{
                         {context}.set_s(u);
                         {context}.set_i(j);
-                        goto!( L );
+                        goto!( l );
                     }}
                     None => {{
                         if {context}.r_seen_contains(
@@ -406,9 +406,6 @@ fn prefix(rb: &RustBackend) -> String {
     pub struct {};
 "##, nonterm))
         .collect();
-    let names_to_labels: String = rb.all_labels().into_iter()
-        .map(|label| format!("            \"{}\" => Some({}),\n", label.name, label.render_use()))
-        .collect();
     let nonterm_impls: String =
         rb.all_nonterms().into_iter()
         .map(|nonterm| format!("{}\n\n", rb.impl_for_nonterm(nonterm, &rb.0)))
@@ -416,6 +413,7 @@ fn prefix(rb: &RustBackend) -> String {
     format!(r###"
 use pgy_runtime::*;
 
+#[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Label {{
 {labels}
@@ -425,16 +423,7 @@ impl LabelZero for Label {{
     fn label_zero() -> Self {{ Label::_0 }}
 }}
 
-impl Label {{
-    fn from_name(name: &str) -> Option<Label> {{
-        use self::Label as L;
-        match name {{
-{names_to_labels}
-            _ => None,
-        }}
-    }}
-}}
-
+#[cfg(kill_me)]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum NonTerm {{
 {nonterm_variants}
@@ -472,7 +461,6 @@ pub fn parse<'g, C:Context<'g, Label>, S:Copy+StartNonTerm<Label>>({context}: &m
             labels=labels,
             nonterm_types=nonterm_types,
             nonterm_variants=nonterm_variants,
-            names_to_labels=names_to_labels,
             nonterm_impls=nonterm_impls,
             db_macro_definition = DB_MACRO_DEFINITION,
             goto_macro_definition = GOTO_MACRO_DEFINITION,
