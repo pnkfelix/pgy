@@ -1,12 +1,11 @@
 extern crate pgy_runtime;
 
 pub mod parse_a;
-pub mod support;
 
 #[cfg(test)]
 mod test_a {
     use pgy_runtime::graph::Graph;
-    use super::support::{DemoContext, ParseError, Success};
+    use pgy_runtime::demo::{DemoContext, ParseError, Success};
     use super::parse_a::{parse, nonterm};
 
     fn demo(input: &str) -> Result<Success, ParseError> {
@@ -33,7 +32,7 @@ pub mod parse_S;
 #[cfg(test)]
 mod test_S {
     use pgy_runtime::graph::Graph;
-    use super::support::{DemoContext, ParseError, Success};
+    use pgy_runtime::demo::{DemoContext, ParseError, Success};
     use super::parse_S::{parse, nonterm};
 
     fn demo(input: &str) -> Result<Success, ParseError> {
