@@ -186,6 +186,9 @@ impl<'a, C:Backend> Codegen<'a, C> {
     pub fn on_symbols(&self,
                       alpha: &[Sym<usize>],
                       x: NontermName) -> (C::Command, Option<C::Label>) {
+        // FIXME: the infrastructure should be revised to allow me to
+        // inline a sequence of terminals (since they do not need to
+        // be encoded into separate labelled blocks).
         assert!(alpha.len() > 0);
         let (s_0, alpha) = alpha.split_at(1);
         match s_0[0] {
