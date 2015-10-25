@@ -264,7 +264,7 @@ impl<'a> Backend for RustBackend<'a> {
             let mut terms = first.into_terms();
             terms.union_(follow.into_terms());
             let all_terms: String = terms.iter()
-                .map(|t| format!("'{}',", t)).collect();
+                .map(|t| format!("C::Term::from_char('{}'),", t)).collect();
 
             // FIXME: we might special-case when the set of terms *is*
             // the universe of terminals, and just let that produce
