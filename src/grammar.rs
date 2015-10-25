@@ -613,11 +613,6 @@ impl<E:Copy> Grammar<E> {
         self.rules[0].left
     }
 
-    #[cfg(apparently_dead_code)]
-    pub fn first_t(&self, a: NontermName) -> &[TermName] {
-        &self.firsts[a][..]
-    }
-
     fn follow_t(&self, a: NontermName) -> &[TermName] {
         &self.follows[a][..]
     }
@@ -675,14 +670,6 @@ pub fn demo_grammar() -> Grammar {
 fn test_nullable() {
     let g = demo_grammar();
     assert_eq!(g.nullable.iter().collect::<Vec<_>>(), [&"S"]);
-}
-
-#[test]
-fn test_first_t() {
-    let g = demo_grammar();
-    assert_eq!(g.first_t("S"), ['a', 'b', 'c']);
-    assert_eq!(g.first_t("A"), ['a', 'c']);
-    assert_eq!(g.first_t("B"), ['a', 'b']);
 }
 
 #[test]
