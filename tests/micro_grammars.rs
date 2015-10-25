@@ -2,8 +2,8 @@ use std::process::Command;
 
 fn main() {
     let output = Command::new("cargo")
-        .arg("build")
-        .current_dir("examples/micro_grammars")
+        .arg("test")
+        .current_dir("tests/micro_grammars")
         .output()
         .unwrap();
     println!("stdout: {}", String::from_utf8_lossy(&output.stdout));

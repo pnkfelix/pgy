@@ -7,5 +7,9 @@ authors = ["pnkfelix"]
 git = "http://github.com/pnkfelix/pgy_runtime.git"
 # path = "/home/pnkfelix/Dev/Rust/pgy_runtime"
 
-[[example]]
+[[test]]
 name = "micro_grammars"
+test = true
+
+# micro_grammars is just a driver that runs a sub-crate's tests.
+harness = false
